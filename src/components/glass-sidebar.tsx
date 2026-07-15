@@ -20,7 +20,8 @@ import {
   BarChart3,
   Kanban,
   UserCircle,
-  Shield
+  Shield,
+  LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -35,9 +36,6 @@ export function GlassSidebar({ role = "applicant" }: SidebarProps) {
   const applicantLinks = [
     { href: "/dashboard", icon: Home, label: "Dashboard" },
     { href: "/apply", icon: FileText, label: "Apply for Loan" },
-    { href: "/applications", icon: CreditCard, label: "My Applications" },
-    { href: "/documents", icon: Upload, label: "Documents" },
-    { href: "/profile", icon: UserCircle, label: "Profile" },
   ]
 
   const agentLinks = [
@@ -57,9 +55,7 @@ export function GlassSidebar({ role = "applicant" }: SidebarProps) {
   const links = role === "admin" ? adminLinks : role === "agent" ? agentLinks : applicantLinks
 
   const bottomLinks = [
-    { href: "/notifications", icon: Bell, label: "Notifications" },
-    { href: "/settings", icon: Settings, label: "Settings" },
-    { href: "/help", icon: HelpCircle, label: "Help" },
+    { href: "/", icon: LogOut, label: "Logout" },
   ]
 
   return (
@@ -134,27 +130,7 @@ export function GlassSidebar({ role = "applicant" }: SidebarProps) {
           )
         })}
 
-        {/* AI Copilot */}
-        <div className="pt-4 mt-4 border-t border-white/10">
-          <Link
-            href="/copilot"
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-[#6366F1]/20 to-[#8B5CF6]/20 text-white hover:from-[#6366F1]/30 hover:to-[#8B5CF6]/30 transition-all"
-          >
-            <Bot className="w-5 h-5 text-[#8B5CF6]" />
-            <AnimatePresence>
-              {!isCollapsed && (
-                <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="font-medium"
-                >
-                  AI Copilot
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </Link>
-        </div>
+        
       </nav>
 
       {/* Bottom links */}
