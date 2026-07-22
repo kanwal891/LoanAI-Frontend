@@ -14,6 +14,7 @@ interface GlassNavbarProps {
 export function GlassNavbar({ variant = "landing" }: GlassNavbarProps) {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -22,6 +23,10 @@ export function GlassNavbar({ variant = "landing" }: GlassNavbarProps) {
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+
+  useEffect(() => {
+  setIsLoggedIn(localStorage.getItem("isLoggedIn") === "true")
+}, [])
 
   const navLinks = [
     { href: "#features", label: "Features" },
@@ -76,16 +81,40 @@ export function GlassNavbar({ variant = "landing" }: GlassNavbarProps) {
 
             {/* CTA Buttons */}
             <div className="hidden md:flex items-center gap-4">
-              <Link href="/login">
-                <MagneticButton variant="ghost" size="sm">
-                  Sign In
-                </MagneticButton>
-              </Link>
-              <Link href="/apply">
-                <MagneticButton variant="primary" size="sm">
-                  Get Started
-                </MagneticButton>
-              </Link>
+              {isLoggedIn ? (
+  <>
+    <Link href="/dashboard">
+      <MagneticButton variant="ghost" size="sm">
+        Dashboard
+      </MagneticButton>
+    </Link>
+
+    <MagneticButton
+      variant="primary"
+      size="sm"
+      onClick={() => {
+        localStorage.removeItem("isLoggedIn")
+        window.location.href = "/"
+      }}
+    >
+      Logout
+    </MagneticButton>
+  </>
+) : (
+  <>
+    <Link href="/login">
+      <MagneticButton variant="ghost" size="sm">
+        Sign In
+      </MagneticButton>
+    </Link>
+
+    <Link href="/apply">
+      <MagneticButton variant="primary" size="sm">
+        Get Started
+      </MagneticButton>
+    </Link>
+  </>
+)}
             </div>
 
             {/* Mobile Menu Button */}

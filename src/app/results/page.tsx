@@ -204,14 +204,14 @@ export default function ResultsPage() {
                     glow
                   >
                     {index === 0 && (
-                      <div className="absolute -top-3 left-4 px-3 py-1 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#FF8F6B] text-xs font-medium text-white">
+                      <div className="absolute -top-3 left-4 px-3 py-1 rounded-full bg-linear-to-r from-[#FF6B35] to-[#FF8F6B] text-xs font-medium text-white">
                         Top Recommendation
                       </div>
                     )}
                     
                     <div className="flex items-start gap-4">
                       {/* Bank Logo */}
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center text-2xl font-bold text-white flex-shrink-0">
+                      <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center text-2xl font-bold text-white shrink-0">
                         {bank.logo}
                       </div>
 

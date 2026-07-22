@@ -23,6 +23,7 @@ import { MagneticButton } from "@/components/magnetic-button"
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState("")
+const [mobile, setMobile] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -32,13 +33,16 @@ export default function LoginPage() {
   const [otpSent, setOtpSent] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    setIsLoading(false)
-    router.push("/dashboard")
-  }
+  e.preventDefault()
+  setIsLoading(true)
+
+  await new Promise(resolve => setTimeout(resolve, 1500))
+
+  localStorage.setItem("isLoggedIn", "true")
+
+  setIsLoading(false)
+  router.push("/dashboard")
+}
 
   const handleSendOTP = async () => {
     setIsLoading(true)
@@ -196,13 +200,28 @@ export default function LoginPage() {
             </div>
 
             <form onSubmit={handleLogin} className="space-y-6">
-              <FloatingInput
-                label="Email Address"
-                type="email"
-                value={email}
-                onChange={setEmail}
-                icon={<Mail className="w-5 h-5" />}
-              />
+              {loginMethod === "password" ? (
+  <FloatingInput
+    label="Email Address"
+    type="email"
+    value={email}
+    onChange={setEmail}
+    icon={<Mail className="w-5 h-5" />}
+  />
+) : (
+  <FloatingInput
+    label="Mobile Number"
+    type="tel"
+    value={mobile}
+    onChange={(value) => {
+      // Allow only digits and limit to 10 digits
+      const numericValue = value.replace(/\D/g, "").slice(0, 10)
+      setMobile(numericValue)
+    }}
+    placeholder="Enter your mobile number"
+    icon={<Smartphone className="w-5 h-5" />}
+  />
+)}
 
               <AnimatePresence mode="wait">
                 {loginMethod === "password" ? (
