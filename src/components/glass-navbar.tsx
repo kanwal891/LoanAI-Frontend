@@ -28,11 +28,20 @@ export function GlassNavbar({ variant = "landing" }: GlassNavbarProps) {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-40 py-4">
-      {/* Solid backdrop strip so scrolled page content never shows through the floating pill or its gaps */}
-      <div className="absolute inset-x-0 top-0 h-24 bg-[#080B14]/90 backdrop-blur-xl -z-10" />
+      <div className="bg-[#110814]/70" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="glass rounded-2xl px-6 py-3 flex items-center justify-between">
+        <div className="
+rounded-2xl
+px-6 py-3
+flex items-center justify-between
+bg-gradient-to-r
+from-[#1A1024]
+via-[#160C20]
+to-[#120917]
+border border-white/10
+shadow-xl
+">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center">

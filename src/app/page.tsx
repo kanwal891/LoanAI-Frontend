@@ -135,7 +135,7 @@ const pricingPlans = [
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-[#080B14] overflow-x-hidden">
+    <main className="min-h-screen bg-[#110814] overflow-x-hidden">
       <GlassNavbar variant="landing" />
 
       {/* Hero Section */}

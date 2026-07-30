@@ -30,29 +30,53 @@ import { CircularProgress } from "@/components/circular-progress"
 
 const applications = [
   {
-    id: "APP-2024-001",
+    id: "APP-2026-001",
     bank: "HDFC Bank",
     amount: 1500000,
     status: "approved",
-    date: "2024-01-15",
-    rate: 10.5
+    date: "2026-07-01",
+    rate: 10.5,
   },
   {
-    id: "APP-2024-002",
+    id: "APP-2026-002",
     bank: "ICICI Bank",
     amount: 1200000,
     status: "processing",
-    date: "2024-01-18",
-    rate: 10.75
+    date: "2026-07-03",
+    rate: 10.75,
   },
   {
-    id: "APP-2024-003",
-    bank: "SBI",
+    id: "APP-2026-003",
+    bank: "State Bank of India",
     amount: 1000000,
     status: "pending",
-    date: "2024-01-20",
-    rate: 11.0
-  }
+    date: "2026-07-05",
+    rate: 11.0,
+  },
+  {
+    id: "APP-2026-004",
+    bank: "Axis Bank",
+    amount: 1800000,
+    status: "approved",
+    date: "2026-07-06",
+    rate: 10.25,
+  },
+  {
+    id: "APP-2026-005",
+    bank: "Kotak Mahindra Bank",
+    amount: 800000,
+    status: "rejected",
+    date: "2026-07-07",
+    rate: 11.45,
+  },
+  {
+    id: "APP-2026-006",
+    bank: "Punjab National Bank",
+    amount: 950000,
+    status: "processing",
+    date: "2026-07-08",
+    rate: 10.95,
+  },
 ]
 
 const documents = [
@@ -87,10 +111,6 @@ export default function DashboardPage() {
             <p className="text-muted-foreground">Here&apos;s your loan dashboard overview</p>
           </div>
           <div className="flex items-center gap-4">
-            <button className="relative p-2 rounded-xl glass hover:bg-white/10 transition-colors">
-              <Bell className="w-5 h-5 text-muted-foreground" />
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#FF6B35]" />
-            </button>
             <Link href="/apply">
               <MagneticButton variant="primary" size="sm">
                 <Sparkles className="w-4 h-4" />
@@ -153,7 +173,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-2xl font-bold text-white mb-1">
-                <AnimatedCounter value={3} />
+                <AnimatedCounter value={applications.length} />
               </p>
               <p className="text-sm text-muted-foreground">Active Applications</p>
             </GlassCard>
@@ -179,7 +199,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-3 gap-6 items-start">
           {/* Applications */}
           <div className="col-span-2">
             <GlassCard className="p-6">

@@ -102,7 +102,7 @@ export function FloatingSelect({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="absolutetop-full left-0 right-0 mt-2 z-[9999] glass rounded-xl overflow-hidden shadow-2xl border border-white/10"
+            className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-[#768ab7] rounded-xl overflow-hidden shadow-2xl border border-white/10"
           >
             {options.map((option) => (
               <motion.button
