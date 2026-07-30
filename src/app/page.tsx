@@ -61,9 +61,9 @@ const features = [
     description: "256-bit encryption ensures your financial data is protected with enterprise-level security."
   },
   {
-    icon: TrendingUp,
-    title: "Credit Optimization",
-    description: "Receive actionable insights to improve your credit score and increase approval chances."
+    icon: BarChart3,
+    title: "Bank Comparison",
+    description: "Compare offers side-by-side across 20+ banks and instantly see which one gives you the best rate."
   }
 ]
 
@@ -139,22 +139,16 @@ export default function LandingPage() {
       <GlassNavbar variant="landing" />
 
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center pt-20">
+      <section className="relative flex items-center justify-center pt-32 pb-20">
         <AuroraBackground intensity="high" />
         
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             className="text-center"
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
           >
-            {/* Badge */}
-            <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-8">
-              <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
-              <span className="text-sm text-muted-foreground">AI-Powered Loan Intelligence</span>
-            </motion.div>
-
             {/* Headline */}
             <motion.h1 
               variants={fadeInUp}
@@ -181,16 +175,12 @@ export default function LandingPage() {
                   <ArrowRight className="w-5 h-5" />
                 </MagneticButton>
               </Link>
-              <MagneticButton variant="secondary" size="lg">
-                <Play className="w-5 h-5" />
-                Watch Demo
-              </MagneticButton>
             </motion.div>
 
             {/* Stats Cards */}
             <motion.div 
               variants={fadeInUp}
-              className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto"
+              className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto mb-16"
             >
               {[
                 { value: 98, suffix: "%", label: "Accuracy Rate" },
@@ -206,40 +196,40 @@ export default function LandingPage() {
                 </GlassCard>
               ))}
             </motion.div>
+
+            {/* Dashboard Preview */}
+            <motion.div
+              className="w-full max-w-5xl mx-auto"
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.6, duration: 0.8 }}
+            >
+              <div className="glass-card rounded-2xl p-1 shadow-2xl">
+                <div className="bg-[#0F1629] rounded-xl p-4">
+                  <div className="flex gap-2 mb-4">
+                    <div className="w-3 h-3 rounded-full bg-red-500" />
+                    <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                    <div className="w-3 h-3 rounded-full bg-green-500" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="glass-card p-4 rounded-xl">
+                      <div className="text-xs text-muted-foreground mb-2">Eligibility Score</div>
+                      <div className="text-2xl font-bold text-[#10B981]">87%</div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl">
+                      <div className="text-xs text-muted-foreground mb-2">Best Rate</div>
+                      <div className="text-2xl font-bold text-[#6366F1]">10.5%</div>
+                    </div>
+                    <div className="glass-card p-4 rounded-xl">
+                      <div className="text-xs text-muted-foreground mb-2">Max Amount</div>
+                      <div className="text-2xl font-bold text-[#FF6B35]">₹15L</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         </div>
-
-        {/* Floating Dashboard Preview */}
-        <motion.div
-          className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-5xl px-4"
-          initial={{ y: 100, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.8, duration: 0.8 }}
-        >
-          <div className="glass-card rounded-t-2xl rounded-b-none p-1 shadow-2xl">
-            <div className="bg-[#0F1629] rounded-t-xl p-4">
-              <div className="flex gap-2 mb-4">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="glass-card p-4 rounded-xl">
-                  <div className="text-xs text-muted-foreground mb-2">Eligibility Score</div>
-                  <div className="text-2xl font-bold text-[#10B981]">87%</div>
-                </div>
-                <div className="glass-card p-4 rounded-xl">
-                  <div className="text-xs text-muted-foreground mb-2">Best Rate</div>
-                  <div className="text-2xl font-bold text-[#6366F1]">10.5%</div>
-                </div>
-                <div className="glass-card p-4 rounded-xl">
-                  <div className="text-xs text-muted-foreground mb-2">Max Amount</div>
-                  <div className="text-2xl font-bold text-[#FF6B35]">₹15L</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
       </section>
 
       {/* Bank Logos Carousel */}
@@ -410,71 +400,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" className="py-24">
-        <div className="max-w-7xl mx-auto px-4">
-          <motion.div
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Simple, Transparent <span className="gradient-text-accent">Pricing</span>
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Choose the plan that fits your needs
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {pricingPlans.map((plan, index) => (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                viewport={{ once: true }}
-                className={plan.popular ? "md:-mt-4 md:mb-4" : ""}
-              >
-                <GlassCard 
-                  className={`p-6 h-full relative ${plan.popular ? "border-[#1B4FBB] shadow-[0_0_40px_rgba(27,79,187,0.3)]" : ""}`}
-                  glow={plan.popular}
-                >
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-[#1B4FBB] to-[#6366F1] text-xs font-medium text-white">
-                      Most Popular
-                    </div>
-                  )}
-                  <div className="text-center mb-6">
-                    <h3 className="text-xl font-semibold text-white mb-2">{plan.name}</h3>
-                    <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-4xl font-bold text-white">{plan.price}</span>
-                      {plan.period && <span className="text-muted-foreground">{plan.period}</span>}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2">{plan.description}</p>
-                  </div>
-                  <ul className="space-y-3 mb-6">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <MagneticButton 
-                    variant={plan.popular ? "primary" : "secondary"} 
-                    className="w-full"
-                  >
-                    Get Started
-                  </MagneticButton>
-                </GlassCard>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA Section */}
       <section className="py-24 relative">
         <AuroraBackground intensity="medium" />
@@ -514,30 +439,6 @@ export default function LandingPage() {
               <p className="text-sm text-muted-foreground">
                 AI-powered loan recommendations for smarter financial decisions.
               </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="#" className="hover:text-white transition-colors">Features</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Pricing</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">API</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="#" className="hover:text-white transition-colors">About</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Blog</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Careers</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="#" className="hover:text-white transition-colors">Privacy</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Terms</Link></li>
-                <li><Link href="#" className="hover:text-white transition-colors">Security</Link></li>
-              </ul>
             </div>
           </div>
           <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">

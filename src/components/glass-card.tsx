@@ -32,17 +32,18 @@ export function GlassCard({
 
   return (
     <motion.div
-      className={cn(
-        "glass-card rounded-2xl",
-        hover && "card-hover cursor-pointer",
-        glow && glowStyles[glowColor],
-        className
-      )}
-      whileHover={hover ? { y: -4, scale: 1.01 } : undefined}
-      whileTap={onClick ? { scale: 0.99 } : undefined}
-      transition={{ duration: 0.3 }}
-      onClick={onClick}
-    >
+  className={cn(
+    "glass-card rounded-2xl overflow-visible",
+    hover && "card-hover cursor-pointer",
+    glow && glowStyles[glowColor],
+    className
+  )}
+  whileHover={
+    hover
+      ? { boxShadow: "0 15px 40px rgba(0,0,0,.25)" }
+      : undefined
+  }
+>
       {children}
     </motion.div>
   )

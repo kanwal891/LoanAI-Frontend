@@ -20,7 +20,6 @@ import {
   AlertCircle
 } from "lucide-react"
 import Link from "next/link"
-import { GlassNavbar } from "@/components/glass-navbar"
 import { AuroraBackground } from "@/components/aurora-background"
 import { GlassCard } from "@/components/glass-card"
 import { MagneticButton } from "@/components/magnetic-button"
@@ -192,26 +191,33 @@ export default function ApplyPage() {
 
   return (
     <main className="min-h-screen bg-[#080B14]">
-      <GlassNavbar variant="dashboard" />
       
-      <div className="flex pt-16">
+      <div className="flex">
         {/* Main Content */}
         <div className={`flex-1 transition-all duration-300 ${showCopilot ? "mr-80" : ""}`}>
           <div className="max-w-4xl mx-auto px-4 py-8">
             {/* Header */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-8"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <h1 className="text-2xl font-bold text-white">Personal Loan Application</h1>
-              </div>
-              <p className="text-muted-foreground">Complete the form below to check your loan eligibility</p>
-            </motion.div>
+  initial={{ opacity: 0, y: 20 }}
+  animate={{ opacity: 1, y: 0 }}
+  className="mb-8"
+>
+  <Link
+    href="/dashboard"
+    className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-white"
+  >
+    <ArrowLeft className="h-4 w-4" />
+    Back to Dashboard
+  </Link>
+
+  <h1 className="text-3xl font-bold text-white">
+    Personal Loan Application
+  </h1>
+
+  <p className="mt-2 text-muted-foreground">
+    Fill in your details to receive AI-powered loan recommendations.
+  </p>
+</motion.div>
 
             {/* Progress Steps */}
             <motion.div
@@ -260,7 +266,10 @@ export default function ApplyPage() {
             </motion.div>
 
             {/* Form Content */}
-            <GlassCard className="p-8 relative overflow-hidden">
+            <GlassCard
+  className="p-8 relative overflow-visible"
+  hover={false}
+>
               <AuroraBackground intensity="low" />
               
               <AnimatePresence mode="wait" custom={direction}>

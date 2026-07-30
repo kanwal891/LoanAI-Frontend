@@ -40,7 +40,13 @@ export function FloatingSelect({
   const selectedOption = options.find(opt => opt.value === value)
 
   return (
-    <div className={cn("relative", className)}>
+    <div
+  className={cn(
+    "relative",
+    isOpen && "z-[9999]",
+    className
+  )}
+>
       <div className="relative">
         {icon && (
           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10">
@@ -96,7 +102,7 @@ export function FloatingSelect({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="absolute top-full left-0 right-0 mt-2 z-50 glass rounded-xl overflow-hidden"
+            className="absolutetop-full left-0 right-0 mt-2 z-[9999] glass rounded-xl overflow-hidden shadow-2xl border border-white/10"
           >
             {options.map((option) => (
               <motion.button

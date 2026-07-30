@@ -4,20 +4,9 @@ import { useState } from "react"
 import { motion } from "framer-motion"
 import { 
   Sparkles, 
-  TrendingUp, 
-  Building2, 
   CheckCircle2,
   ArrowRight,
-  Download,
-  Share2,
-  Star,
-  Clock,
-  Shield,
-  Percent,
-  Banknote,
-  Calendar,
-  ChevronRight,
-  Info
+  ChevronRight
 } from "lucide-react"
 import Link from "next/link"
 import { GlassNavbar } from "@/components/glass-navbar"
@@ -178,16 +167,6 @@ export default function ResultsPage() {
           <section className="mb-12">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Recommended Banks</h2>
-              <div className="flex gap-2">
-                <MagneticButton variant="ghost" size="sm">
-                  <Download className="w-4 h-4" />
-                  Export
-                </MagneticButton>
-                <MagneticButton variant="ghost" size="sm">
-                  <Share2 className="w-4 h-4" />
-                  Share
-                </MagneticButton>
-              </div>
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
@@ -204,7 +183,7 @@ export default function ResultsPage() {
                     glow
                   >
                     {index === 0 && (
-                      <div className="absolute -top-3 left-4 px-3 py-1 rounded-full bg-linear-to-r from-[#FF6B35] to-[#FF8F6B] text-xs font-medium text-white">
+                      <div className="inline-flex mb-4 px-3 py-1 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#FF8F6B] text-xs font-medium text-white">
                         Top Recommendation
                       </div>
                     )}

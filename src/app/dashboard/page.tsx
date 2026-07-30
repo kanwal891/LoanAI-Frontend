@@ -79,7 +79,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#080B14]">
       <GlassSidebar role="applicant" />
       
-      <main className="pl-64 pt-4 pr-4 pb-8">
+      <main className="ml-64 p-6 transition-all duration-300">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -227,30 +227,6 @@ export default function DashboardPage() {
                 ))}
               </div>
             </GlassCard>
-
-            {/* EMI Analytics */}
-            <GlassCard className="p-6 mt-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-white">EMI Schedule</h2>
-                <span className="text-sm text-muted-foreground">Next: ₹32,424 on Feb 15</span>
-              </div>
-              
-              <div className="grid grid-cols-3 gap-4">
-                {emiSchedule.map((emi, index) => (
-                  <motion.div
-                    key={emi.month}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 + index * 0.1 }}
-                    className="p-4 rounded-xl glass-card text-center"
-                  >
-                    <p className="text-xs text-muted-foreground mb-2">{emi.month}</p>
-                    <p className="text-lg font-semibold text-white">₹{emi.amount.toLocaleString()}</p>
-                    <span className="text-xs text-[#FF6B35]">{emi.status}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </GlassCard>
           </div>
 
           {/* Right Column */}
@@ -313,38 +289,6 @@ export default function DashboardPage() {
               </div>
             </GlassCard>
 
-            {/* Notifications */}
-            <GlassCard className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">Notifications</h2>
-                <span className="w-5 h-5 rounded-full bg-[#FF6B35] text-xs flex items-center justify-center text-white">3</span>
-              </div>
-              
-              <div className="space-y-3">
-                {notifications.map((notif, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="p-3 rounded-xl glass-card"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-2 h-2 rounded-full mt-2 ${
-                        notif.type === "success" ? "bg-[#10B981]"
-                        : notif.type === "warning" ? "bg-[#FF6B35]"
-                        : "bg-[#6366F1]"
-                      }`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{notif.title}</p>
-                        <p className="text-xs text-muted-foreground truncate">{notif.message}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{notif.time}</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </GlassCard>
           </div>
         </div>
       </main>
