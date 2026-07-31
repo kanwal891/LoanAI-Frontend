@@ -394,11 +394,12 @@ export default function ApplyPage() {
                                       icon={<Percent className="w-5 h-5" />}
                                     />
                                     <FloatingInput
-                                      label="Loan Start Date"
-                                      type="date"
-                                      value={loan.startDate}
-                                      onChange={(v) => updateExistingLoan(loan.id, "startDate", v)}
-                                    />
+  label="Loan Disbursement Date"
+  value={loan.startDate}
+  onChange={(v) => updateExistingLoan(loan.id, "startDate", v)}
+  placeholder="DD/MM/YYYY"
+  showCalendar
+/>
                                     <FloatingInput
                                       label="Principal Outstanding"
                                       value={loan.principalOutstanding}
