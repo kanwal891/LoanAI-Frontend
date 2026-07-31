@@ -199,10 +199,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-3 gap-6 items-start">
+        <div className="grid grid-cols-3 gap-6 items-stretch">
           {/* Applications */}
           <div className="col-span-2">
-            <GlassCard className="p-6">
+            <GlassCard className="p-6 h-[720px] flex flex-col">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-white">My Applications</h2>
                 <Link href="/applications" className="text-sm text-[#6366F1] hover:text-[#8B5CF6] transition-colors flex items-center gap-1">
@@ -250,7 +250,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Right Column */}
-          <div className="space-y-6">
+          <div className="flex flex-col gap-6 h-[720px]">
             {/* Credit Score Widget */}
             <GlassCard className="p-6" glow glowColor="aurora">
               <h2 className="text-lg font-semibold text-white mb-4">Credit Score</h2>
@@ -270,7 +270,7 @@ export default function DashboardPage() {
             </GlassCard>
 
             {/* Document Checklist */}
-            <GlassCard className="p-6">
+            <GlassCard className="p-6 flex-1 flex flex-col">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white">Documents</h2>
                 <Link href="/documents">

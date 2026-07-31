@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { Menu, X, Sparkles } from "lucide-react"
+import { Menu, X, Sparkles, LogOut, LayoutDashboard } from "lucide-react"
 import { MagneticButton } from "../components/magnetic-button"
 import { cn } from "@/lib/utils"
 
@@ -13,16 +13,10 @@ interface GlassNavbarProps {
 
 export function GlassNavbar({ variant = "landing" }: GlassNavbarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-
-  useEffect(() => {
-    setIsLoggedIn(localStorage.getItem("isLoggedIn") === "true")
-  }, [])
 
   const navLinks = [
     { href: "#features", label: "Features" },
     { href: "#how-it-works", label: "How it Works" },
-    { href: "#pricing", label: "Pricing" },
     { href: "#testimonials", label: "Testimonials" },
   ]
 
@@ -43,7 +37,7 @@ border border-white/10
 shadow-xl
 ">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
+          <Link href={variant === "dashboard" ? "/dashboard" : "/"} className="flex items-center gap-2 group">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
@@ -52,7 +46,7 @@ shadow-xl
             </span>
           </Link>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation — landing page section links only */}
           {variant === "landing" && (
             <div className="hidden md:flex items-center gap-8">
               {navLinks.map((link) => (
@@ -67,27 +61,15 @@ shadow-xl
             </div>
           )}
 
-          {/* CTA Buttons */}
+          {/* CTA Buttons — driven by variant, not runtime auth state */}
           <div className="hidden md:flex items-center gap-4">
-            {isLoggedIn ? (
-              <>
-                <Link href="/dashboard">
-                  <MagneticButton variant="ghost" size="sm">
-                    Dashboard
-                  </MagneticButton>
-                </Link>
-
-                <MagneticButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    localStorage.removeItem("isLoggedIn")
-                    window.location.href = "/"
-                  }}
-                >
-                  Logout
+            {variant === "dashboard" ? (
+              <Link href="/dashboard">
+                <MagneticButton variant="ghost" size="sm">
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
                 </MagneticButton>
-              </>
+              </Link>
             ) : (
               <>
                 <Link href="/login">
@@ -137,16 +119,27 @@ shadow-xl
                   </Link>
                 ))}
               <div className="pt-4 border-t border-white/10 space-y-2">
-                <Link href="/login" className="block">
-                  <MagneticButton variant="secondary" size="sm" className="w-full">
-                    Sign In
-                  </MagneticButton>
-                </Link>
-                <Link href="/apply" className="block">
-                  <MagneticButton variant="primary" size="sm" className="w-full">
-                    Get Started
-                  </MagneticButton>
-                </Link>
+                {variant === "dashboard" ? (
+                  <Link href="/login" className="block">
+                    <MagneticButton variant="secondary" size="sm" className="w-full">
+                      <LogOut className="w-4 h-4" />
+                      Logout
+                    </MagneticButton>
+                  </Link>
+                ) : (
+                  <>
+                    <Link href="/login" className="block">
+                      <MagneticButton variant="secondary" size="sm" className="w-full">
+                        Sign In
+                      </MagneticButton>
+                    </Link>
+                    <Link href="/apply" className="block">
+                      <MagneticButton variant="primary" size="sm" className="w-full">
+                        Get Started
+                      </MagneticButton>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
           </motion.div>
