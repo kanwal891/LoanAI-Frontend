@@ -313,10 +313,11 @@ export default function ApplyPage() {
                           <label className="text-sm text-muted-foreground mb-3 block">Loan Type</label>
                           <SegmentedToggle
                             options={[
-                              { value: "fresh", label: "Fresh Case", description: "New loan application" }
+                              { value: "fresh", label: "Fresh Case", description: "New loan application" },
+                              { value: "bt", label: "Balance Transfer", description: "Transfer existing loans" }
                             ]}
                             value={caseType}
-                            onChange={(v) => setCaseType("fresh")}
+                            onChange={(v) => setCaseType(v)}
                           />
                         </div>
                       </div>

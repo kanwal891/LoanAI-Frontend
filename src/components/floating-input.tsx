@@ -17,6 +17,12 @@ interface FloatingInputProps {
   disabled?: boolean
 }
 
+// Native inputs that render their own browser-controlled placeholder
+// (e.g. "dd-mm-yyyy" for date) which can't be hidden via the placeholder
+// prop. For these, the floating label must always stay in the "floated"
+// position — there's no visually "empty" state to float down into.
+const ALWAYS_FLOATED_TYPES = ["date", "time", "datetime-local", "month", "week"]
+
 export function FloatingInput({
   label,
   type = "text",
@@ -32,7 +38,8 @@ export function FloatingInput({
   const [isFocused, setIsFocused] = useState(false)
   const id = useId()
   const hasValue = value.length > 0
-  const isActive = isFocused || hasValue
+  const isDateLikeType = ALWAYS_FLOATED_TYPES.includes(type)
+  const isActive = isFocused || hasValue || isDateLikeType
 
   return (
     <div className={cn("relative", className)}>
@@ -54,7 +61,7 @@ export function FloatingInput({
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholder={isActive ? placeholder : ""}
+          placeholder={isActive && !isDateLikeType ? placeholder : ""}
           disabled={disabled}
           className={cn(
             "w-full px-4 py-4 pt-6 rounded-xl glass-input text-white transition-all duration-300",
