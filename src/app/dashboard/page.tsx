@@ -3,26 +3,15 @@
 import { motion } from "framer-motion"
 import { 
   TrendingUp, 
-  Clock, 
-  CheckCircle2,
-  AlertCircle,
-  FileText,
   CreditCard,
   Wallet,
-  ArrowRight,
-  Calendar,
-  Bell,
-  Upload,
-  Building2,
   ChevronRight,
   Sparkles,
   BarChart3,
-  PieChart,
   Activity
 } from "lucide-react"
 import Link from "next/link"
 import { GlassSidebar } from "@/components/glass-sidebar"
-import { AuroraBackground } from "@/components/aurora-background"
 import { GlassCard } from "@/components/glass-card"
 import { MagneticButton } from "@/components/magnetic-button"
 import { AnimatedCounter } from "@/components/animated-counter"
@@ -53,51 +42,7 @@ const applications = [
     date: "2026-07-05",
     rate: 11.0,
   },
-  {
-    id: "APP-2026-004",
-    bank: "Axis Bank",
-    amount: 1800000,
-    status: "approved",
-    date: "2026-07-06",
-    rate: 10.25,
-  },
-  {
-    id: "APP-2026-005",
-    bank: "Kotak Mahindra Bank",
-    amount: 800000,
-    status: "rejected",
-    date: "2026-07-07",
-    rate: 11.45,
-  },
-  {
-    id: "APP-2026-006",
-    bank: "Punjab National Bank",
-    amount: 950000,
-    status: "processing",
-    date: "2026-07-08",
-    rate: 10.95,
-  },
 ]
-
-const documents = [
-  { name: "PAN Card", status: "verified", icon: FileText },
-  { name: "Aadhaar Card", status: "verified", icon: FileText },
-  { name: "Salary Slips", status: "pending", icon: FileText },
-  { name: "Bank Statements", status: "required", icon: FileText },
-]
-
-const notifications = [
-  { title: "HDFC Loan Approved", message: "Congratulations! Your loan has been approved.", time: "2h ago", type: "success" },
-  { title: "Document Required", message: "Please upload your latest salary slip.", time: "5h ago", type: "warning" },
-  { title: "Application Update", message: "Your ICICI application is being processed.", time: "1d ago", type: "info" },
-]
-
-const emiSchedule = [
-  { month: "Feb 2024", amount: 32424, status: "upcoming" },
-  { month: "Mar 2024", amount: 32424, status: "upcoming" },
-  { month: "Apr 2024", amount: 32424, status: "upcoming" },
-]
-
 export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-[#080B14]">
@@ -198,19 +143,18 @@ export default function DashboardPage() {
           </motion.div>
         </div>
 
-        {/* Main Content Grid */}
+        {/* Main Content Grid — both columns stretch to the same height,
+            driven by whichever card is naturally taller (no hardcoded px
+            heights fighting each other like the old h-[400px] / h-[720px]) */}
         <div className="grid grid-cols-3 gap-6 items-stretch">
           {/* Applications */}
-          <div className="col-span-2">
-            <GlassCard className="p-6 h-[720px] flex flex-col">
+          <div className="col-span-2 flex">
+            <GlassCard className="p-6 flex flex-col w-full">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-white">My Applications</h2>
-                <Link href="/applications" className="text-sm text-[#6366F1] hover:text-[#8B5CF6] transition-colors flex items-center gap-1">
-                  View All <ChevronRight className="w-4 h-4" />
-                </Link>
               </div>
               
-              <div className="space-y-4">
+              <div className="space-y-4 flex-1">
                 {applications.map((app, index) => (
                   <motion.div
                     key={app.id}
@@ -246,15 +190,23 @@ export default function DashboardPage() {
                   </motion.div>
                 ))}
               </div>
+
+              <Link
+                href="/applications"
+                className="text-sm text-[#6366F1] hover:text-[#8B5CF6] transition-colors flex items-center gap-1 mt-4"
+              >
+                View All <ChevronRight className="w-4 h-4" />
+              </Link>
             </GlassCard>
           </div>
 
           {/* Right Column */}
-          <div className="flex flex-col gap-6 h-[720px]">
-            {/* Credit Score Widget */}
-            <GlassCard className="p-6" glow glowColor="aurora">
+          <div className="flex">
+            {/* Credit Score Widget — h-full so it matches the applications
+                card's natural height instead of a separately guessed value */}
+            <GlassCard className="p-6 h-full flex flex-col w-full" glow glowColor="aurora">
               <h2 className="text-lg font-semibold text-white mb-4">Credit Score</h2>
-              <div className="flex items-center justify-center mb-4">
+              <div className="flex items-center justify-center mb-4 flex-1">
                 <CircularProgress value={750} max={900} size={140} color="success" label="CIBIL" />
               </div>
               <div className="grid grid-cols-2 gap-4 text-center">
@@ -268,47 +220,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             </GlassCard>
-
-            {/* Document Checklist */}
-            <GlassCard className="p-6 flex-1 flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">Documents</h2>
-                <Link href="/documents">
-                  <MagneticButton variant="ghost" size="sm">
-                    <Upload className="w-4 h-4" />
-                  </MagneticButton>
-                </Link>
-              </div>
-              
-              <div className="space-y-3">
-                {documents.map((doc, index) => (
-                  <motion.div
-                    key={doc.name}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="flex items-center justify-between p-3 rounded-xl glass-card"
-                  >
-                    <div className="flex items-center gap-3">
-                      <doc.icon className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm text-white">{doc.name}</span>
-                    </div>
-                    <span className={`text-xs ${
-                      doc.status === "verified"
-                        ? "text-[#10B981]"
-                        : doc.status === "pending"
-                        ? "text-[#FF6B35]"
-                        : "text-[#EF4444]"
-                    }`}>
-                      {doc.status === "verified" && <CheckCircle2 className="w-4 h-4" />}
-                      {doc.status === "pending" && <Clock className="w-4 h-4" />}
-                      {doc.status === "required" && <AlertCircle className="w-4 h-4" />}
-                    </span>
-                  </motion.div>
-                ))}
-              </div>
-            </GlassCard>
-
           </div>
         </div>
       </main>

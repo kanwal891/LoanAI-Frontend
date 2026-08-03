@@ -17,6 +17,7 @@ import { GlassCard } from "@/components/glass-card"
 import { MagneticButton } from "@/components/magnetic-button"
 import { AnimatedCounter } from "@/components/animated-counter"
 import { CircularProgress } from "@/components/circular-progress"
+import { FeedbackPopover } from "@/components/feedback-popover"
 
 const recommendations = [
   {
@@ -92,12 +93,37 @@ type FeedbackValue = "up" | "down" | null
 
 export default function ResultsPage() {
   const [selectedBank, setSelectedBank] = useState<string | null>(null)
+
   const [feedback, setFeedback] = useState<FeedbackValue>(null)
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const [feedbackText, setFeedbackText] = useState("")
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+
   const eligibilityScore = 87
 
   const handleFeedback = (value: "up" | "down") => {
-    // Toggle off if the same button is clicked again
-    setFeedback((prev) => (prev === value ? null : value))
+    setFeedback(value)
+    setFeedbackSubmitted(false)
+    setFeedbackText("")
+    setPopoverOpen(true)
+  }
+
+  const handleClosePopover = () => {
+    setPopoverOpen(false)
+    setTimeout(() => {
+      setFeedback(null)
+      setFeedbackText("")
+      setFeedbackSubmitted(false)
+    }, 200)
+  }
+
+  const handleSubmitFeedback = () => {
+    // TODO: wire up to your feedback API / handler
+    // await submitFeedback({ rating: feedback, comment: feedbackText })
+    setFeedbackSubmitted(true)
+    setTimeout(() => {
+      handleClosePopover()
+    }, 1400)
   }
 
   return (
@@ -178,22 +204,8 @@ export default function ResultsPage() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Recommended Banks</h2>
 
-              {/* AI Response Feedback */}
-              <div className="flex items-center gap-3 shrink-0">
-                <AnimatePresence mode="wait">
-                  {feedback && (
-                    <motion.span
-                      key="thanks"
-                      initial={{ opacity: 0, x: 8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 8 }}
-                      className="text-xs text-muted-foreground"
-                    >
-                      Thanks for your feedback!
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-
+              {/* AI Response Feedback — anchor for the popover */}
+              <div className="relative flex items-center gap-3 shrink-0">
                 <div className="flex items-center gap-2">
                   <motion.button
                     type="button"
@@ -224,6 +236,17 @@ export default function ResultsPage() {
                     <ThumbsDown className={`w-5 h-5 ${feedback === "down" ? "fill-current" : ""}`} />
                   </motion.button>
                 </div>
+
+                <FeedbackPopover
+                  open={popoverOpen}
+                  type={feedback}
+                  value={feedbackText}
+                  onChange={setFeedbackText}
+                  onClose={handleClosePopover}
+                  onSubmit={handleSubmitFeedback}
+                  submitted={feedbackSubmitted}
+                  align="right"
+                />
               </div>
             </div>
 

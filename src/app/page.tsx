@@ -53,7 +53,7 @@ const features = [
   {
     icon: Zap,
     title: "Instant Recommendations",
-    description: "Get personalized loan recommendations from 20+ banks based on your unique financial profile."
+    description: "Get personalized loan recommendations from 80+ banks based on your unique financial profile."
   },
   {
     icon: Shield,
@@ -63,7 +63,7 @@ const features = [
   {
     icon: BarChart3,
     title: "Bank Comparison",
-    description: "Compare offers side-by-side across 20+ banks and instantly see which one gives you the best rate."
+    description: "Compare offers side-by-side across 80+ banks and instantly see which one gives you the best rate."
   }
 ]
 
@@ -164,7 +164,7 @@ export default function LandingPage() {
               className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 text-pretty"
             >
               Get instant AI-powered loan eligibility assessment and personalized recommendations 
-              from 20+ banks. Make informed financial decisions in minutes, not days.
+              from 80+ banks. Make informed financial decisions in minutes, not days.
             </motion.p>
 
             {/* CTA Buttons */}
@@ -185,7 +185,7 @@ export default function LandingPage() {
               {[
                 { value: 98, suffix: "%", label: "Accuracy Rate" },
                 { value: 50000, suffix: "+", label: "Happy Users" },
-                { value: 20, suffix: "+", label: "Partner Banks" },
+                { value: 80, suffix: "+", label: "Partner Banks" },
                 { value: 2, suffix: " Min", label: "Avg. Decision Time" }
               ].map((stat, index) => (
                 <GlassCard key={index} className="p-4 text-center" glow>
@@ -318,7 +318,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-8">
             {[
               { step: "01", title: "Enter Your Details", description: "Fill in your basic information and financial details in our smart form.", icon: Users },
-              { step: "02", title: "AI Analysis", description: "Our AI analyzes your profile against 50+ parameters across 20+ banks.", icon: Brain },
+              { step: "02", title: "AI Analysis", description: "Our AI analyzes your profile against 50+ parameters across 80+ banks.", icon: Brain },
               { step: "03", title: "Get Recommendations", description: "Receive personalized loan options ranked by approval probability.", icon: BarChart3 }
             ].map((item, index) => (
               <motion.div

@@ -37,7 +37,6 @@ export function GlassSidebar({ role = "applicant" }: SidebarProps) {
     { href: "/dashboard", icon: Home, label: "Dashboard" },
     { href: "/apply", icon: FileText, label: "Apply for Loan" },
     { href: "/applications", icon: CreditCard, label: "My Applications" },
-    { href: "/documents", icon: Upload, label: "Documents" },
     { href: "/profile", icon: UserCircle, label: "Profile" },
   ]
 
