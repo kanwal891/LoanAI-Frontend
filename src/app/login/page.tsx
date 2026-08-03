@@ -20,15 +20,7 @@ import { GlassCard } from "@/components/glass-card"
 import { FloatingInput } from "@/components/floating-input"
 import { MagneticButton } from "@/components/magnetic-button"
 
-const AUTHORIZED_USER = {
-  email: "user@loanai.com",
-  password: "User@1234",
-}
 
-const AUTHORIZED_ADMIN = {
-  email: "admin@loanai.com",
-  password: "Admin@1234",
-}
 
 type LoginRole = "user" | "admin"
 
@@ -62,29 +54,20 @@ export default function LoginPage() {
   }
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validateForm()) return
+  e.preventDefault()
 
-    setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 800))
+  if (!validateForm()) return
 
-    const expected = role === "admin" ? AUTHORIZED_ADMIN : AUTHORIZED_USER
+  setIsLoading(true)
+  await new Promise((resolve) => setTimeout(resolve, 800))
 
-    if (
-      email.trim().toLowerCase() !== expected.email.toLowerCase() ||
-      password !== expected.password
-    ) {
-      setIsLoading(false)
-      setErrors({ password: `Incorrect email or password for ${role} login` })
-      return
-    }
+  // TODO: Replace with backend authentication
+  localStorage.setItem("isLoggedIn", "true")
+  localStorage.setItem("userRole", role)
 
-    localStorage.setItem("isLoggedIn", "true")
-    localStorage.setItem("userRole", role)
-    setIsLoading(false)
-    router.push(role === "admin" ? "/admin/dashboard" : "/dashboard")
-  }
-
+  setIsLoading(false)
+  router.push(role === "admin" ? "/admin/dashboard" : "/dashboard")
+}
   const handleRoleChange = (newRole: LoginRole) => {
     setRole(newRole)
     setErrors({})
