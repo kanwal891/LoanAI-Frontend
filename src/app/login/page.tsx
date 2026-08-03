@@ -10,6 +10,8 @@ import {
   ArrowRight,
   ArrowLeft,
   Sparkles,
+  User,
+  ShieldCheck,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -20,11 +22,19 @@ import { MagneticButton } from "@/components/magnetic-button"
 
 const AUTHORIZED_USER = {
   email: "user@loanai.com",
-  password: "user@123",
+  password: "User@1234",
 }
+
+const AUTHORIZED_ADMIN = {
+  email: "admin@loanai.com",
+  password: "Admin@1234",
+}
+
+type LoginRole = "user" | "admin"
 
 export default function LoginPage() {
   const router = useRouter()
+  const [role, setRole] = useState<LoginRole>("user")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -58,19 +68,26 @@ export default function LoginPage() {
     setIsLoading(true)
     await new Promise((resolve) => setTimeout(resolve, 800))
 
-    // Single-user check
+    const expected = role === "admin" ? AUTHORIZED_ADMIN : AUTHORIZED_USER
+
     if (
-      email.trim().toLowerCase() !== AUTHORIZED_USER.email.toLowerCase() ||
-      password !== AUTHORIZED_USER.password
+      email.trim().toLowerCase() !== expected.email.toLowerCase() ||
+      password !== expected.password
     ) {
       setIsLoading(false)
-      setErrors({ password: "Incorrect email or password" })
+      setErrors({ password: `Incorrect email or password for ${role} login` })
       return
     }
 
     localStorage.setItem("isLoggedIn", "true")
+    localStorage.setItem("userRole", role)
     setIsLoading(false)
-    router.push("/dashboard")
+    router.push(role === "admin" ? "/admin/dashboard" : "/dashboard")
+  }
+
+  const handleRoleChange = (newRole: LoginRole) => {
+    setRole(newRole)
+    setErrors({})
   }
 
   return (
@@ -160,6 +177,34 @@ export default function LoginPage() {
               <p className="text-muted-foreground">Enter your credentials to continue</p>
             </div>
 
+            {/* Role Toggle */}
+            <div className="flex p-1 glass rounded-xl mb-8">
+              <button
+                type="button"
+                onClick={() => handleRoleChange("user")}
+                className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
+                  role === "user"
+                    ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg"
+                    : "text-muted-foreground hover:text-white"
+                }`}
+              >
+                <User className="w-4 h-4" />
+                Login as User
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRoleChange("admin")}
+                className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
+                  role === "admin"
+                    ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg"
+                    : "text-muted-foreground hover:text-white"
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Login as Admin
+              </button>
+            </div>
+
             <form onSubmit={handleLogin} className="space-y-6">
               <div>
                 <FloatingInput
@@ -237,7 +282,7 @@ export default function LoginPage() {
                   </div>
                 ) : (
                   <>
-                    Sign In
+                    {role === "admin" ? "Sign In as Admin" : "Sign In"}
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </>
                 )}
