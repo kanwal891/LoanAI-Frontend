@@ -3,15 +3,13 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import {
-  Mail,
+  User as UserIcon,
   Lock,
   Eye,
   EyeOff,
   ArrowRight,
   ArrowLeft,
   Sparkles,
-  User,
-  ShieldCheck,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -19,58 +17,47 @@ import { AuroraBackground } from "@/components/aurora-background"
 import { GlassCard } from "@/components/glass-card"
 import { FloatingInput } from "@/components/floating-input"
 import { MagneticButton } from "@/components/magnetic-button"
-
-
-
-type LoginRole = "user" | "admin"
+import { login, ApiError } from "@/lib/api"
 
 export default function LoginPage() {
   const router = useRouter()
-  const [role, setRole] = useState<LoginRole>("user")
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
 
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  const [errors, setErrors] = useState<{ username?: string; password?: string; form?: string }>({})
 
   const validateForm = () => {
     const newErrors: typeof errors = {}
-    if (!email) {
-      newErrors.email = "Email is required"
-    } else if (!emailRegex.test(email)) {
-      newErrors.email = "Enter a valid email address"
-    }
-    if (!password) {
-      newErrors.password = "Password is required"
-    } else if (password.length < 8) {
-      newErrors.password = "Password must be at least 8 characters"
-    }
+    if (!username) newErrors.username = "Username is required"
+    if (!password) newErrors.password = "Password is required"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault()
+    e.preventDefault()
+    if (!validateForm()) return
 
-  if (!validateForm()) return
-
-  setIsLoading(true)
-  await new Promise((resolve) => setTimeout(resolve, 800))
-
-  // TODO: Replace with backend authentication
-  localStorage.setItem("isLoggedIn", "true")
-  localStorage.setItem("userRole", role)
-
-  setIsLoading(false)
-  router.push(role === "admin" ? "/admin/dashboard" : "/dashboard")
-}
-  const handleRoleChange = (newRole: LoginRole) => {
-    setRole(newRole)
+    setIsLoading(true)
     setErrors({})
+
+    try {
+      // login() from lib/api.ts:
+      //  1. POSTs form-encoded username/password to /auth/token
+      //  2. Stores the returned JWT under the "access_token" key
+      //  3. Calls GET /auth/me to fetch the real user (including role)
+      const user = await login(username, password)
+      router.push(user.role === "admin" ? "/admin/dashboard" : "/dashboard")
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Something went wrong. Please try again."
+      setErrors({ form: message })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -160,47 +147,25 @@ export default function LoginPage() {
               <p className="text-muted-foreground">Enter your credentials to continue</p>
             </div>
 
-            {/* Role Toggle */}
-            <div className="flex p-1 glass rounded-xl mb-8">
-              <button
-                type="button"
-                onClick={() => handleRoleChange("user")}
-                className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                  role === "user"
-                    ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg"
-                    : "text-muted-foreground hover:text-white"
-                }`}
-              >
-                <User className="w-4 h-4" />
-                Login as User
-              </button>
-              <button
-                type="button"
-                onClick={() => handleRoleChange("admin")}
-                className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
-                  role === "admin"
-                    ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg"
-                    : "text-muted-foreground hover:text-white"
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4" />
-                Login as Admin
-              </button>
-            </div>
-
             <form onSubmit={handleLogin} className="space-y-6">
+              {errors.form && (
+                <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <p className="text-sm text-red-400">{errors.form}</p>
+                </div>
+              )}
+
               <div>
                 <FloatingInput
-                  label="Email Address"
-                  type="email"
-                  value={email}
+                  label="Username"
+                  type="text"
+                  value={username}
                   onChange={(v: string) => {
-                    setEmail(v)
-                    setErrors((prev) => ({ ...prev, email: undefined }))
+                    setUsername(v)
+                    setErrors((prev) => ({ ...prev, username: undefined, form: undefined }))
                   }}
-                  icon={<Mail className="w-5 h-5" />}
+                  icon={<UserIcon className="w-5 h-5" />}
                 />
-                {errors.email && <p className="mt-1 text-sm text-red-400">{errors.email}</p>}
+                {errors.username && <p className="mt-1 text-sm text-red-400">{errors.username}</p>}
               </div>
 
               <div>
@@ -211,7 +176,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(v: string) => {
                       setPassword(v)
-                      setErrors((prev) => ({ ...prev, password: undefined }))
+                      setErrors((prev) => ({ ...prev, password: undefined, form: undefined }))
                     }}
                     icon={<Lock className="w-5 h-5" />}
                   />
@@ -265,7 +230,7 @@ export default function LoginPage() {
                   </div>
                 ) : (
                   <>
-                    {role === "admin" ? "Sign In as Admin" : "Sign In"}
+                    Sign In
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </>
                 )}
