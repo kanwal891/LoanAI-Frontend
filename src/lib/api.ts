@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 export interface UserRead {
   id: number
@@ -100,6 +100,141 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 }
 
 export { ApiError }
+
+export type DocumentCategory = "bank_policy" | "case_study"
+export type DocumentStatus = "draft" | "active"
+export type RagStatus = "pending" | "processing" | "ready" | "failed"
+
+export interface BankSummary {
+  id: number
+  bank_name: string
+}
+
+export interface KnowledgeDocumentRead {
+  id: number
+  document_name: string
+  bank_id: number
+  bank: BankSummary | null
+  category: DocumentCategory
+  version: string
+  effective_date: string | null
+  expiry_date: string | null
+  description: string | null
+  status: DocumentStatus
+  rag_status: RagStatus
+  original_filename: string
+  content_type: string
+  file_size: number
+  uploaded_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface KnowledgeDocumentCreateInput {
+  document_name: string
+  bank_id: number
+  category: DocumentCategory
+  version: string
+  effective_date?: string
+  expiry_date?: string
+  description?: string
+  file: File
+  status?: DocumentStatus
+}
+
+export interface KnowledgeDocumentUpdateInput {
+  document_name?: string
+  bank_id?: number
+  category?: DocumentCategory
+  version?: string
+  effective_date?: string
+  expiry_date?: string
+  description?: string
+  status?: DocumentStatus
+}
+
+export function listKnowledgeDocuments(): Promise<KnowledgeDocumentRead[]> {
+  return apiFetch<KnowledgeDocumentRead[]>("/knowledge/documents")
+}
+
+export function getKnowledgeDocument(id: number): Promise<KnowledgeDocumentRead> {
+  return apiFetch<KnowledgeDocumentRead>(`/knowledge/documents/${id}`)
+}
+
+export async function uploadKnowledgeDocument(
+  data: KnowledgeDocumentCreateInput
+): Promise<KnowledgeDocumentRead> {
+  const token = getToken()
+  if (!token) throw new ApiError("Not authenticated", 401)
+
+  const formData = new FormData()
+  formData.append("document_name", data.document_name)
+  formData.append("bank_id", String(data.bank_id))
+  formData.append("category", data.category)
+  formData.append("version", data.version)
+  if (data.effective_date) formData.append("effective_date", data.effective_date)
+  if (data.expiry_date) formData.append("expiry_date", data.expiry_date)
+  if (data.description) formData.append("description", data.description)
+  if (data.status) formData.append("status", data.status)
+  formData.append("file", data.file)
+
+  const res = await fetch(`${API_BASE_URL}/knowledge/documents`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new ApiError(text || `Failed to upload document (${res.status})`, res.status)
+  }
+
+  return res.json()
+}
+
+export function updateKnowledgeDocument(
+  id: number,
+  data: KnowledgeDocumentUpdateInput
+): Promise<KnowledgeDocumentRead> {
+  return apiFetch<KnowledgeDocumentRead>(`/knowledge/documents/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteKnowledgeDocument(id: number): Promise<void> {
+  const token = getToken()
+  const res = await fetch(`${API_BASE_URL}/knowledge/documents/${id}`, {
+    method: "DELETE",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+
+  if (!res.ok) {
+    throw new ApiError(`Failed to delete document (${res.status})`, res.status)
+  }
+}
+
+export async function downloadKnowledgeDocument(id: number): Promise<Blob> {
+  const token = getToken()
+  if (!token) throw new ApiError("Not authenticated", 401)
+
+  const res = await fetch(`${API_BASE_URL}/knowledge/documents/${id}/download`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new ApiError(text || `Failed to download document (${res.status})`, res.status)
+  }
+
+  return res.blob()
+}
 
 export type BankStatus = "active" | "deactive"
 

@@ -141,8 +141,8 @@ export default function BankManagementPage() {
               Manage the bank list and toggle active status for use in document uploads.
             </p>
           </div>
-          <div className="rounded-3xl bg-white/5 px-4 py-3 text-sm text-white">
-            Active banks: <span className="font-semibold">{activeBanks.length}</span>
+          <div className="rounded-3xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100 border border-emerald-500/20">
+            Active banks: <span className="font-semibold text-white">{activeBanks.length}</span>
           </div>
         </div>
 
@@ -223,11 +223,11 @@ export default function BankManagementPage() {
                     return (
                       <div
                         key={bank.id}
-                        className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#0b1220] px-4 py-3"
+                        className={isActive ? "flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3" : "flex items-center justify-between rounded-2xl border border-white/10 bg-[#0b1220] px-4 py-3"}
                       >
                         <div>
                           <p className="text-sm font-medium text-white">{bank.bank_name}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className={isActive ? "text-xs text-emerald-200" : "text-xs text-muted-foreground"}>
                             {isActive ? "Active" : "Deactivated"}
                           </p>
                         </div>

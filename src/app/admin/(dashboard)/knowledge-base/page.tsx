@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDropzone } from "react-dropzone"
 import {
@@ -25,31 +25,23 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import {
+  listBanks,
+  uploadKnowledgeDocument,
+  type BankRead,
+  type DocumentCategory,
+} from "@/lib/api"
 
-const categories = [
-  "Bank Policy",
-  "Case Study",
+const categories: { label: string; value: DocumentCategory }[] = [
+  { label: "Bank Policy", value: "bank_policy" },
+  { label: "Case Study", value: "case_study" },
 ]
 
-interface Bank {
-  id: string
-  name: string
-  active: boolean
-}
-
-const initialBanks: Bank[] = [
-  { id: "hdfc", name: "HDFC Bank", active: true },
-  { id: "icici", name: "ICICI Bank", active: true },
-  { id: "axis", name: "Axis Bank", active: true },
-  { id: "sbi", name: "SBI", active: true },
-  { id: "kotak", name: "Kotak Mahindra Bank", active: true },
-  { id: "yes", name: "Yes Bank", active: true },
-  { id: "indusind", name: "IndusInd Bank", active: true },
-  { id: "pnb", name: "Punjab National Bank", active: true },
-]
+const initialBanks: BankRead[] = []
 
 interface UploadedFile {
   id: string
+  file: File
   name: string
   size: number
   type: string
@@ -69,17 +61,23 @@ export default function KnowledgeBasePage() {
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [formData, setFormData] = useState({
     documentName: "",
-    bankName: "",
+    bankId: "",
     category: "",
     effectiveDate: "",
     expiryDate: "",
     version: "1.0",
     description: "",
   })
+  const [bankList, setBankList] = useState<BankRead[]>(initialBanks)
+  const [isLoadingBanks, setIsLoadingBanks] = useState(true)
+  const [bankLoadError, setBankLoadError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => ({
       id: Math.random().toString(36).substring(7),
+      file,
       name: file.name,
       size: file.size,
       type: file.type,
@@ -124,75 +122,84 @@ export default function KnowledgeBasePage() {
     },
   })
 
+  useEffect(() => {
+    const loadBanks = async () => {
+      setIsLoadingBanks(true)
+      setBankLoadError(null)
+
+      try {
+        const banks = await listBanks()
+        setBankList(banks)
+      } catch (err) {
+        setBankLoadError(err instanceof Error ? err.message : "Failed to load banks")
+      } finally {
+        setIsLoadingBanks(false)
+      }
+    }
+
+    loadBanks()
+  }, [])
+
   const removeFile = (id: string) => {
     setFiles((prev) => prev.filter((f) => f.id !== id))
   }
 
-  const [bankList, setBankList] = useState<Bank[]>(initialBanks)
-  const [bankNameInput, setBankNameInput] = useState("")
-  const [editingBankId, setEditingBankId] = useState<string | null>(null)
-  const [bankDropdownValue, setBankDropdownValue] = useState("")
-  const [otherBankName, setOtherBankName] = useState("")
+  const handleSubmit = async (status: "draft" | "active") => {
+    const selectedFile = files[0]?.file
+    setSubmitError(null)
 
-  const activeBanks = bankList.filter((bank) => bank.active)
-  const editingBank = bankList.find((bank) => bank.id === editingBankId) ?? null
-
-  const handleBankFormSubmit = () => {
-    const name = bankNameInput.trim()
-    if (!name) return
-
-    if (editingBank) {
-      setBankList((prev) =>
-        prev.map((bank) =>
-          bank.id === editingBank.id ? { ...bank, name } : bank
-        )
-      )
-    } else {
-      setBankList((prev) => [
-        ...prev,
-        {
-          id: Math.random().toString(36).substring(2, 9),
-          name,
-          active: true,
-        },
-      ])
+    if (!selectedFile) {
+      setSubmitError("Please upload a document file before submitting.")
+      return
     }
 
-    setBankNameInput("")
-    setEditingBankId(null)
-  }
+    if (!formData.documentName.trim()) {
+      setSubmitError("Document name is required.")
+      return
+    }
 
-  const handleEditBank = (bank: Bank) => {
-    setBankNameInput(bank.name)
-    setEditingBankId(bank.id)
-  }
+    if (!formData.bankId) {
+      setSubmitError("Please select a bank.")
+      return
+    }
 
-  const handleCancelBankEdit = () => {
-    setBankNameInput("")
-    setEditingBankId(null)
-  }
+    if (!formData.category) {
+      setSubmitError("Please select a document category.")
+      return
+    }
 
-  const handleBankSelection = (value: string) => {
-    setBankDropdownValue(value)
-    if (value !== "others") {
-      setFormData({ ...formData, bankName: value })
-      setOtherBankName("")
-    } else {
-      setFormData({ ...formData, bankName: "" })
+    setIsSubmitting(true)
+
+    try {
+      await uploadKnowledgeDocument({
+        document_name: formData.documentName,
+        bank_id: Number(formData.bankId),
+        category: formData.category as DocumentCategory,
+        version: formData.version,
+        effective_date: formData.effectiveDate || undefined,
+        expiry_date: formData.expiryDate || undefined,
+        description: formData.description || undefined,
+        status,
+        file: selectedFile,
+      })
+      setFiles([])
+      setFormData({
+        documentName: "",
+        bankId: "",
+        category: "",
+        effectiveDate: "",
+        expiryDate: "",
+        version: "1.0",
+        description: "",
+      })
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const toggleBankActive = (id: string) => {
-    setBankList((prev) =>
-      prev.map((bank) =>
-        bank.id === id ? { ...bank, active: !bank.active } : bank
-      )
-    )
-    if (editingBankId === id) {
-      setEditingBankId(null)
-      setBankNameInput("")
-    }
-  }
+  const activeBanks = bankList.filter((bank) => bank.status === "active")
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + " B"
@@ -349,37 +356,30 @@ export default function KnowledgeBasePage() {
               <div className="space-y-2">
                 <Label htmlFor="bankName">Bank Name</Label>
                 <Select
-                  value={bankDropdownValue}
-                  onValueChange={handleBankSelection}
+                  value={formData.bankId || undefined}
+                  onValueChange={(value) => setFormData({ ...formData, bankId: value })}
                 >
                   <SelectTrigger className="border-white/10 bg-white/5">
-                    <SelectValue placeholder="Select bank" />
+                    <SelectValue placeholder={isLoadingBanks ? "Loading banks..." : "Select bank"} />
                   </SelectTrigger>
                   <SelectContent className="border-white/10 bg-[#0a0f1a]">
-                    {activeBanks.length > 0 &&
+                    {isLoadingBanks ? (
+                      <SelectItem value="loading" disabled>
+                        Loading banks...
+                      </SelectItem>
+                    ) : activeBanks.length > 0 ? (
                       activeBanks.map((bank) => (
-                        <SelectItem key={bank.id} value={bank.name}>
-                          {bank.name}
+                        <SelectItem key={bank.id} value={String(bank.id)}>
+                          {bank.bank_name}
                         </SelectItem>
-                      ))}
-                    <SelectItem value="others">Others</SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="no-active" disabled>
+                        No active banks available
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
-                {bankDropdownValue === "others" && (
-                  <div className="mt-3 space-y-2">
-                    <Label htmlFor="otherBankName">Enter bank name</Label>
-                    <Input
-                      id="otherBankName"
-                      placeholder="Type bank name"
-                      value={otherBankName}
-                      onChange={(e) => {
-                        setOtherBankName(e.target.value)
-                        setFormData({ ...formData, bankName: e.target.value })
-                      }}
-                      className="border-white/10 bg-white/5"
-                    />
-                  </div>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -395,8 +395,8 @@ export default function KnowledgeBasePage() {
                   </SelectTrigger>
                   <SelectContent className="border-white/10 bg-[#0a0f1a]">
                     {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -456,13 +456,36 @@ export default function KnowledgeBasePage() {
               />
             </div>
 
+            {submitError && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {submitError}
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-              <Button className="flex-1 bg-linear-to-r from-primary to-indigo-500">
-                <Upload className="mr-2 h-4 w-4" />
+              <Button
+                className="flex-1 bg-linear-to-r from-primary to-indigo-500"
+                onClick={() => handleSubmit("active")}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
                 Upload Document
               </Button>
-              <Button variant="outline" className="border-white/10 bg-white/5">
-                <Save className="mr-2 h-4 w-4" />
+              <Button
+                variant="outline"
+                className="border-white/10 bg-white/5"
+                onClick={() => handleSubmit("draft")}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
                 Save Draft
               </Button>
             </div>

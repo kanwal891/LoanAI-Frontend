@@ -1,7 +1,9 @@
 "use client"
-
-import { useState } from "react"
-import { motion } from "framer-motion"
+import Link from "next/link";
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { motion, AnimatePresence } from "framer-motion"
+import { DeleteConfirmDialog } from "@/components/ui/delete-dialog"
 import {
   Search,
   Eye,
@@ -43,116 +45,154 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { deleteKnowledgeDocument, downloadKnowledgeDocument, listKnowledgeDocuments, type KnowledgeDocumentRead, updateKnowledgeDocument } from "@/lib/api"
 
-const documents = [
-  {
-    id: "1",
-    name: "HDFC Bank Credit Policy",
-    bankName: "HDFC Bank",
-    category: "Bank Policy",
-    version: "3.2",
-    uploadDate: "2024-01-15",
-    lastUpdated: "2024-01-18",
-    uploadedBy: "Admin User",
-    status: "active",
-  },
-  {
-    id: "2",
-    name: "ICICI FOIR Guidelines",
-    bankName: "ICICI Bank",
-    category: "Case Study",
-    version: "2.1",
-    uploadDate: "2024-01-12",
-    lastUpdated: "2024-01-14",
-    uploadedBy: "Review Team",
-    status: "active",
-  },
-  {
-    id: "3",
-    name: "Axis Bank Eligibility Matrix",
-    bankName: "Axis Bank",
-    category: "Bank Policy",
-    version: "1.5",
-    uploadDate: "2024-01-18",
-    lastUpdated: "2024-01-18",
-    uploadedBy: "Admin User",
-    status: "draft",
-  },
-  {
-    id: "4",
-    name: "SBI Credit Risk Rules",
-    bankName: "SBI",
-    category: "Bank Policy",
-    version: "4.0",
-    uploadDate: "2024-01-10",
-    lastUpdated: "2024-01-10",
-    uploadedBy: "System",
-    status: "failed",
-  },
-  {
-    id: "5",
-    name: "Kotak ROI Policy",
-    bankName: "Kotak Mahindra Bank",
-    category: "Case Study",
-    version: "2.0",
-    uploadDate: "2024-01-08",
-    lastUpdated: "2024-01-09",
-    uploadedBy: "Admin User",
-    status: "Inactive",
-  },
-  {
-    id: "6",
-    name: "Yes Bank Underwriting Rules",
-    bankName: "Yes Bank",
-    category: "Case Study",
-    version: "1.8",
-    uploadDate: "2024-01-05",
-    lastUpdated: "2024-01-07",
-    uploadedBy: "Review Team",
-    status: "active",
-  },
-  {
-    id: "7",
-    name: "IndusInd CIBIL Policies",
-    bankName: "IndusInd Bank",
-    category: "Bank Policy",
-    version: "3.0",
-    uploadDate: "2024-01-03",
-    lastUpdated: "2024-01-04",
-    uploadedBy: "Admin User",
-    status: "failed",
-  },
-  {
-    id: "8",
-    name: "PNB Bank Policies",
-    bankName: "Punjab National Bank",
-    category: "Case Study",
-    version: "2.5",
-    uploadDate: "2024-01-01",
-    lastUpdated: "2024-01-02",
-    uploadedBy: "Admin User",
-    status: "draft",
-  },
-]
+const initialDocuments: KnowledgeDocumentRead[] = []
 
 const statusConfig = {
   active: { label: "Active", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
   draft: { label: "Draft", color: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
-  Inactive: { label: "Inactive", color: "bg-gray-500/20 text-gray-400 border-gray-500/30" },
-  failed: { label: "Failed", color: "bg-red-500/20 text-red-400 border-red-500/30" },
+}
+
+const categoryLabels: Record<string, string> = {
+  bank_policy: "Bank Policy",
+  case_study: "Case Study",
 }
 
 export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [documents, setDocuments] = useState<KnowledgeDocumentRead[]>(initialDocuments)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [viewError, setViewError] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const router = useRouter()
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type })
+    window.setTimeout(() => setToast(null), 3000)
+  }
+
+  useEffect(() => {
+    const loadDocuments = async () => {
+      setIsLoading(true)
+      setLoadError(null)
+
+      try {
+        const docs = await listKnowledgeDocuments()
+        setDocuments(docs)
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : "Failed to load documents")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadDocuments()
+  }, [])
+
+  const handleViewDocument = async (id: number) => {
+    setViewError(null)
+    setActionLoadingId(id)
+
+    const newWindow = window.open("", "_blank")
+    if (!newWindow) {
+      setViewError("Popup blocked. Please allow popups and try again.")
+      setActionLoadingId(null)
+      return
+    }
+
+    try {
+      const blob = await downloadKnowledgeDocument(id)
+      const url = URL.createObjectURL(blob)
+      newWindow.location.href = url
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    } catch (err) {
+      newWindow.close()
+      setViewError(err instanceof Error ? err.message : "Failed to open document.")
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const handleDownloadDocument = async (id: number) => {
+    setViewError(null)
+    setActionLoadingId(id)
+
+    try {
+      const blob = await downloadKnowledgeDocument(id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `document-${id}`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    } catch (err) {
+      setViewError(err instanceof Error ? err.message : "Failed to download document.")
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const handleEditDocument = (id: number) => {
+    router.push(`/admin/documents/${id}/edit`)
+  }
+
+  const requestDeleteDocument = (id: number) => {
+    setDeleteConfirmId(id)
+  }
+
+  const handleToggleDocumentStatus = async (doc: KnowledgeDocumentRead) => {
+    setViewError(null)
+    setActionLoadingId(doc.id)
+
+    try {
+      const updated = await updateKnowledgeDocument(doc.id, {
+        status: doc.status === "active" ? "draft" : "active",
+      })
+      setDocuments((prev) => prev.map((item) => (item.id === updated.id ? updated : item)))
+    } catch (err) {
+      setViewError(err instanceof Error ? err.message : "Failed to update document status.")
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const handleDeleteDocument = async (id: number) => {
+    setViewError(null)
+    setActionLoadingId(id)
+
+    try {
+      await deleteKnowledgeDocument(id)
+      setDocuments((prev) => prev.filter((doc) => doc.id !== id))
+      setDeleteConfirmId(null)
+      showToast("Document deleted.")
+    } catch (err) {
+      setViewError(err instanceof Error ? err.message : "Failed to delete document.")
+      showToast("Unable to delete document.", "error")
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const categoryLabel = (category: string) =>
+    category === "bank_policy" ? "Bank Policy" : category === "case_study" ? "Case Study" : category
 
   const filteredDocuments = documents.filter((doc) => {
+    const bankName = doc.bank?.bank_name ?? String(doc.bank_id)
+    const category = categoryLabels[doc.category] ?? doc.category
     const matchesSearch =
-      doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.bankName.toLowerCase().includes(searchQuery.toLowerCase())
+      doc.document_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      bankName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      category.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === "all" || doc.status === statusFilter
-    const matchesCategory = categoryFilter === "all" || doc.category === categoryFilter
+    const matchesCategory = categoryFilter === "all" || category === categoryFilter
     return matchesSearch && matchesStatus && matchesCategory
   })
 
@@ -166,11 +206,44 @@ export default function DocumentsPage() {
             Manage and organize all lender policy documents
           </p>
         </div>
-        <Button className="bg-linear-to-r from-primary to-indigo-500">
-          <FileText className="mr-2 h-4 w-4" />
-          Upload New Document
-        </Button>
+        <Link href="/admin/knowledge-base">
+          <Button className="bg-linear-to-r from-primary to-indigo-500">
+            <FileText className="mr-2 h-4 w-4" />
+            Upload New Document
+          </Button>
+        </Link>
       </div>
+      <AnimatePresence>
+        {toast ? (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.2 }}
+            className={`fixed bottom-4 right-4 z-50 inline-flex w-fit items-center gap-3 rounded-3xl border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur-xl ${
+              toast.type === "success"
+                ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+                : "border-red-400/20 bg-red-500/10 text-red-100"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              className={`inline-flex h-2.5 w-2.5 shrink-0 rounded-full ${
+                toast.type === "success" ? "bg-emerald-400" : "bg-red-400"
+              }`}
+            />
+            <span className="max-w-[16rem] truncate">{toast.message}</span>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+      <DeleteConfirmDialog
+        open={deleteConfirmId !== null}
+        itemName={documents.find((doc) => doc.id === deleteConfirmId)?.document_name}
+        loading={actionLoadingId === deleteConfirmId}
+        onConfirm={() => deleteConfirmId !== null && handleDeleteDocument(deleteConfirmId)}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
 
       {/* Filters */}
       <GlassCard className="p-4">
@@ -193,8 +266,6 @@ export default function DocumentsPage() {
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="Inactive">Inactive</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
@@ -209,6 +280,11 @@ export default function DocumentsPage() {
             </Select>
           </div>
         </div>
+        {viewError && (
+          <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {viewError}
+          </div>
+        )}
       </GlassCard>
 
       {/* Documents Table */}
@@ -243,22 +319,22 @@ export default function DocumentsPage() {
                           <FileText className="h-4 w-4 text-primary" />
                         </div>
                         <div>
-                          <p className="font-medium text-white">{doc.name}</p>
+                          <p className="font-medium text-white">{doc.document_name}</p>
                           <p className="text-xs text-muted-foreground">
-                            by {doc.uploadedBy}
+                            by {doc.uploaded_by ?? "Unknown"}
                           </p>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-white">{doc.bankName}</TableCell>
+                    <TableCell className="text-white">{doc.bank?.bank_name ?? `Bank ${doc.bank_id}`}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="border-white/20 bg-white/5">
-                        {doc.category}
+                        {categoryLabels[doc.category] ?? doc.category}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-white">v{doc.version}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {doc.uploadDate}
+                      {new Date(doc.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -283,35 +359,43 @@ export default function DocumentsPage() {
                           align="end"
                           className="border-white/10 bg-[#0a0f1a]"
                         >
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleViewDocument(doc.id)}
+                            disabled={actionLoadingId === doc.id}
+                          >
                             <Eye className="mr-2 h-4 w-4" />
-                            View
+                            {actionLoadingId === doc.id ? "Opening..." : "View"}
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEditDocument(doc.id)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleDownloadDocument(doc.id)}
+                            disabled={actionLoadingId === doc.id}
+                          >
                             <Download className="mr-2 h-4 w-4" />
-                            Download
+                            {actionLoadingId === doc.id ? "Downloading..." : "Download"}
                           </DropdownMenuItem>
-                          {doc.status === "failed" && (
+                          {doc.rag_status === "failed" && (
                             <DropdownMenuItem>
                               <RotateCw className="mr-2 h-4 w-4" />
                               Re-upload
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator className="bg-white/10" />
-                          <DropdownMenuItem>
-                            <GitCompare className="mr-2 h-4 w-4" />
-                            Compare Versions
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleToggleDocumentStatus(doc)}
+                            disabled={actionLoadingId === doc.id}
+                          >
                             <Archive className="mr-2 h-4 w-4" />
-                            Mark Inactive
+                            {doc.status === "active" ? "Mark Inactive" : "Mark Active"}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator className="bg-white/10" />
-                          <DropdownMenuItem className="text-destructive">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => requestDeleteDocument(doc.id)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
