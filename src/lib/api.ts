@@ -22,6 +22,10 @@ class ApiError extends Error {
 }
 const TOKEN_KEY = "access_token"
 
+const ALLOWED_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".txt"])
+const DEFAULT_MAX_UPLOAD_MB = 50
+const MAX_UPLOAD_SIZE_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB) || DEFAULT_MAX_UPLOAD_MB
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null
   return localStorage.getItem(TOKEN_KEY)
@@ -105,6 +109,15 @@ export type DocumentCategory = "bank_policy" | "case_study"
 export type DocumentStatus = "draft" | "active"
 export type RagStatus = "pending" | "processing" | "ready" | "failed"
 
+export type ExtractionStatus =
+  | "pending"
+  | "extracting"
+  | "extracted"
+  | "reviewed"
+  | "failed"
+
+export type ExtractReviewStatus = "extracted" | "reviewed" | "rejected"
+
 export interface BankSummary {
   id: number
   bank_name: string
@@ -121,6 +134,8 @@ export interface KnowledgeDocumentRead {
   expiry_date: string | null
   description: string | null
   status: DocumentStatus
+  extraction_status: ExtractionStatus
+  extraction_error: string | null
   rag_status: RagStatus
   original_filename: string
   content_type: string
@@ -167,6 +182,21 @@ export async function uploadKnowledgeDocument(
   const token = getToken()
   if (!token) throw new ApiError("Not authenticated", 401)
 
+  const filename = data.file?.name || ""
+  const suffix = filename.includes(".") ? `.${filename.split(".").pop()?.toLowerCase()}` : ""
+  if (!ALLOWED_EXTENSIONS.has(suffix)) {
+    throw new ApiError(
+      `Unsupported file type. Allowed: ${[...ALLOWED_EXTENSIONS].join(", ")}`,
+      400
+    )
+  }
+  if (data.file.size === 0) {
+    throw new ApiError("Empty file", 400)
+  }
+  if (data.file.size > MAX_UPLOAD_SIZE_MB * 1024 * 1024) {
+    throw new ApiError(`File exceeds maximum size of ${MAX_UPLOAD_SIZE_MB} MB`, 400)
+  }
+
   const formData = new FormData()
   formData.append("document_name", data.document_name)
   formData.append("bank_id", String(data.bank_id))
@@ -188,7 +218,14 @@ export async function uploadKnowledgeDocument(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "")
-    throw new ApiError(text || `Failed to upload document (${res.status})`, res.status)
+    const status = res.status
+    if (status >= 500) {
+      throw new ApiError(
+        text || `Server error uploading document (${status}). Try again later.`,
+        status
+      )
+    }
+    throw new ApiError(text || `Failed to upload document (${status})`, status)
   }
 
   return res.json()
@@ -213,7 +250,9 @@ export async function deleteKnowledgeDocument(id: number): Promise<void> {
   })
 
   if (!res.ok) {
-    throw new ApiError(`Failed to delete document (${res.status})`, res.status)
+    const text = await res.text().catch(() => "")
+    const message = text || `Failed to delete document (${res.status})`
+    throw new ApiError(message, res.status)
   }
 }
 
@@ -287,4 +326,130 @@ export async function deleteBank(id: number): Promise<void> {
   if (!res.ok) {
     throw new ApiError(`Failed to delete bank (${res.status})`, res.status)
   }
+}
+
+export interface PolicyCardRead {
+  id: number
+  document_id: number
+  bank_id: number
+  extracted_json: Record<string, any>
+  status: ExtractReviewStatus
+  reviewed_by: number | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PolicyCardUpdate {
+  extracted_json: Record<string, any>
+}
+
+export interface CaseRecordRead {
+  id: number
+  document_id: number
+  bank_id: number
+  row_index: number
+  extracted_json: Record<string, any>
+  status: ExtractReviewStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface ExtractionResultRead {
+  document_id: number
+  category: DocumentCategory
+  extraction_status: ExtractionStatus
+  extraction_error?: string | null
+  policy_card?: PolicyCardRead | null
+  case_records: CaseRecordRead[]
+}
+
+export interface ReviewAction {
+  action: "approve" | "reject"
+  reason?: string | null
+}
+
+/**
+ * Fetch extraction result for a knowledge document.
+ */
+export function getExtractionResult(documentId: number): Promise<ExtractionResultRead> {
+  return apiFetch<ExtractionResultRead>(`/knowledge/documents/${documentId}/extraction`)
+}
+
+/**
+ * Call backend diagnostic endpoint that checks Supabase storage auth.
+ * Server must implement `GET /knowledge/_diag/supabase-storage` (protected).
+ */
+export function diagSupabaseStorage(): Promise<{ ok: boolean; sample_count?: number; detail?: string }>{
+  return apiFetch(`/knowledge/_diag/supabase-storage`)
+}
+
+// -----------------------------------------------------------------------
+// Extraction trigger + review
+// -----------------------------------------------------------------------
+export function runExtraction(documentId: number): Promise<KnowledgeDocumentRead> {
+  return apiFetch<KnowledgeDocumentRead>(`/knowledge/documents/${documentId}/extract`, {
+    method: "POST",
+  })
+}
+
+export function reviewExtraction(
+  documentId: number,
+  action: "approve" | "reject",
+  reason?: string
+): Promise<KnowledgeDocumentRead> {
+  return apiFetch<KnowledgeDocumentRead>(`/knowledge/documents/${documentId}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, reason: reason || null }),
+  })
+}
+
+export function updatePolicyCard(
+  documentId: number,
+  extracted_json: Record<string, any>
+): Promise<PolicyCardRead> {
+  return apiFetch<PolicyCardRead>(`/knowledge/documents/${documentId}/policy-card`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ extracted_json }),
+  })
+}
+
+// -----------------------------------------------------------------------
+// Bank comparison (FOIR / ROI / CIBIL / LTV / age / income)
+// -----------------------------------------------------------------------
+export interface PolicyComparisonRow {
+  bank_id: number
+  bank_name: string
+  document_id: number
+  policy_card_id: number
+  extraction_status: string | null
+  foir: number | null
+  roi: number | null
+  cibil: number | null
+  ltv: number | null
+  age: string | null
+  age_min: number | null
+  age_max: number | null
+  income: number | null
+  detected_products: any[]
+}
+
+export interface PolicyComparisonResponse {
+  banks_compared: number
+  reviewed_only: boolean
+  rows: PolicyComparisonRow[]
+}
+
+export function getPolicyComparison(
+  reviewedOnly: boolean = true,
+  bankIds?: number[]
+): Promise<PolicyComparisonResponse> {
+  const params = new URLSearchParams()
+  params.set("reviewed_only", String(reviewedOnly))
+  if (bankIds && bankIds.length > 0) {
+    bankIds.forEach((id) => params.append("bank_id", String(id)))
+  }
+  return apiFetch<PolicyComparisonResponse>(`/knowledge/comparison?${params.toString()}`)
 }

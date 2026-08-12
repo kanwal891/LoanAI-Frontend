@@ -145,7 +145,7 @@ export default function DocumentsPage() {
   }
 
   const requestDeleteDocument = (id: number) => {
-    setDeleteConfirmId(id)
+    setDeleteConfirmId(Number(id))
   }
 
   const handleToggleDocumentStatus = async (doc: KnowledgeDocumentRead) => {
@@ -165,17 +165,20 @@ export default function DocumentsPage() {
   }
 
   const handleDeleteDocument = async (id: number) => {
+    if (id === null || id === undefined) return
     setViewError(null)
     setActionLoadingId(id)
 
     try {
-      await deleteKnowledgeDocument(id)
+      await deleteKnowledgeDocument(Number(id))
       setDocuments((prev) => prev.filter((doc) => doc.id !== id))
       setDeleteConfirmId(null)
       showToast("Document deleted.")
     } catch (err) {
-      setViewError(err instanceof Error ? err.message : "Failed to delete document.")
-      showToast("Unable to delete document.", "error")
+      console.error("Delete document failed:", err)
+      const message = err instanceof Error ? err.message : String(err)
+      setViewError(message)
+      showToast(message || "Unable to delete document.", "error")
     } finally {
       setActionLoadingId(null)
     }

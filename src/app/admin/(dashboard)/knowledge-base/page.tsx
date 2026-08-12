@@ -8,9 +8,18 @@ import {
   FileText,
   X,
   CheckCircle,
+  XCircle,
   AlertCircle,
   Loader2,
   Save,
+  Sparkles,
+  RefreshCw,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Building2,
+  Download,
+  Trash2,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Button } from "@/components/ui/button"
@@ -25,19 +34,25 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { DeleteConfirmDialog } from "@/components/ui/delete-dialog" // adjust path if different
 import {
   listBanks,
+  listKnowledgeDocuments,
   uploadKnowledgeDocument,
+  runExtraction,
+  getPolicyComparison,
+  deleteKnowledgeDocument,
+  downloadKnowledgeDocument,
   type BankRead,
   type DocumentCategory,
+  type KnowledgeDocumentRead,
+  type PolicyComparisonResponse,
 } from "@/lib/api"
 
 const categories: { label: string; value: DocumentCategory }[] = [
   { label: "Bank Policy", value: "bank_policy" },
   { label: "Case Study", value: "case_study" },
 ]
-
-const initialBanks: BankRead[] = []
 
 interface UploadedFile {
   id: string
@@ -49,12 +64,76 @@ interface UploadedFile {
   progress: number
 }
 
-// Plain-language status shown to the user — no processing/pipeline internals.
 const STATUS_LABEL: Record<UploadedFile["status"], string> = {
   uploading: "Uploading",
   processing: "Processing",
   ready: "Ready",
   failed: "Failed",
+}
+
+// -----------------------------------------------------------------------
+// Badge helpers
+// -----------------------------------------------------------------------
+function DocStatusBadge({ status }: { status: KnowledgeDocumentRead["status"] }) {
+  const isActive = status === "active"
+  return (
+    <span
+      className={cn(
+        "px-2 py-0.5 rounded-full text-xs font-medium",
+        isActive ? "bg-emerald-500/15 text-emerald-400" : "bg-white/10 text-muted-foreground"
+      )}
+    >
+      {isActive ? "Active" : "Draft"}
+    </span>
+  )
+}
+
+type ExtractionBadgeConfig = {
+  label: string
+  className: string
+  icon: React.ReactNode
+}
+
+function ExtractionBadge({ status }: { status: KnowledgeDocumentRead["extraction_status"] }) {
+  const map: Record<string, ExtractionBadgeConfig> = {
+    pending: {
+      label: "Not extracted",
+      className: "bg-white/10 text-muted-foreground",
+      icon: <Clock className="h-3 w-3" />,
+    },
+    extracting: {
+      label: "Extracting…",
+      className: "bg-cyan-500/15 text-cyan-400",
+      icon: <Loader2 className="h-3 w-3 animate-spin" />,
+    },
+    extracted: {
+      label: "Needs review",
+      className: "bg-amber-500/15 text-amber-400",
+      icon: <AlertTriangle className="h-3 w-3" />,
+    },
+    reviewed: {
+      label: "Approved",
+      className: "bg-emerald-500/15 text-emerald-400",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+    },
+    failed: {
+      label: "Failed",
+      className: "bg-red-500/15 text-red-400",
+      icon: <XCircle className="h-3 w-3" />,
+    },
+  }
+  const cfg = map[status] ?? map.pending
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
+        cfg.className
+      )}
+    >
+      {cfg.icon}
+      {cfg.label}
+    </span>
+  )
 }
 
 export default function KnowledgeBasePage() {
@@ -68,11 +147,69 @@ export default function KnowledgeBasePage() {
     version: "1.0",
     description: "",
   })
-  const [bankList, setBankList] = useState<BankRead[]>(initialBanks)
+  const [bankList, setBankList] = useState<BankRead[]>([])
   const [isLoadingBanks, setIsLoadingBanks] = useState(true)
-  const [bankLoadError, setBankLoadError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Documents list
+  const [documents, setDocuments] = useState<KnowledgeDocumentRead[]>([])
+  const [isLoadingDocs, setIsLoadingDocs] = useState(true)
+  const [docsError, setDocsError] = useState<string | null>(null)
+  const [extractingId, setExtractingId] = useState<number | null>(null)
+
+  // Delete confirmation dialog state
+  const [deleteTarget, setDeleteTarget] = useState<KnowledgeDocumentRead | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const [comparison, setComparison] = useState<PolicyComparisonResponse | null>(null)
+  const [isLoadingComparison, setIsLoadingComparison] = useState(true)
+  const [comparisonError, setComparisonError] = useState<string | null>(null)
+  const [reviewedOnly, setReviewedOnly] = useState(true)
+
+  const loadDocuments = useCallback(async () => {
+    setIsLoadingDocs(true)
+    setDocsError(null)
+    try {
+      const docs = await listKnowledgeDocuments()
+      setDocuments(docs)
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : "Failed to load documents")
+    } finally {
+      setIsLoadingDocs(false)
+    }
+  }, [])
+
+  const loadComparison = useCallback(async (reviewed: boolean) => {
+    setIsLoadingComparison(true)
+    setComparisonError(null)
+    try {
+      const result = await getPolicyComparison(reviewed)
+      setComparison(result)
+    } catch (err) {
+      setComparisonError(err instanceof Error ? err.message : "Failed to load comparison")
+    } finally {
+      setIsLoadingComparison(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const loadBanks = async () => {
+      setIsLoadingBanks(true)
+      try {
+        const banks = await listBanks()
+        setBankList(banks)
+      } catch {
+        // bank load errors surface via the empty-state in the select below
+      } finally {
+        setIsLoadingBanks(false)
+      }
+    }
+    loadBanks()
+    loadDocuments()
+    loadComparison(reviewedOnly)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadDocuments, loadComparison])
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => ({
@@ -85,14 +222,9 @@ export default function KnowledgeBasePage() {
       progress: 0,
     }))
     setFiles((prev) => [...prev, ...newFiles])
-
-    newFiles.forEach((file) => {
-      simulateUpload(file.id)
-    })
+    newFiles.forEach((file) => simulateUpload(file.id))
   }, [])
 
-  // Simple progress simulation — upload, then a brief "processing" moment,
-  // then the document is marked ready. No pipeline/stage detail is shown.
   const simulateUpload = (fileId: string) => {
     let progress = 0
     const interval = setInterval(() => {
@@ -122,54 +254,35 @@ export default function KnowledgeBasePage() {
     },
   })
 
-  useEffect(() => {
-    const loadBanks = async () => {
-      setIsLoadingBanks(true)
-      setBankLoadError(null)
+  const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id))
 
-      try {
-        const banks = await listBanks()
-        setBankList(banks)
-      } catch (err) {
-        setBankLoadError(err instanceof Error ? err.message : "Failed to load banks")
-      } finally {
-        setIsLoadingBanks(false)
-      }
-    }
+  const activeBanks = bankList.filter((bank) => bank.status === "active")
 
-    loadBanks()
-  }, [])
+  // Only show documents that still need extraction (pending or previously failed).
+  // Extracted / reviewed docs drop off this list automatically.
+  const needsExtractionDocuments = documents.filter(
+    (doc) => doc.extraction_status === "pending" || doc.extraction_status === "failed"
+  )
 
-  const removeFile = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id))
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + " B"
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB"
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB"
   }
+
+  const formatMetric = (value: number | null, suffix = "") =>
+    value === null || value === undefined ? "—" : `${value}${suffix}`
 
   const handleSubmit = async (status: "draft" | "active") => {
     const selectedFile = files[0]?.file
     setSubmitError(null)
 
-    if (!selectedFile) {
-      setSubmitError("Please upload a document file before submitting.")
-      return
-    }
-
-    if (!formData.documentName.trim()) {
-      setSubmitError("Document name is required.")
-      return
-    }
-
-    if (!formData.bankId) {
-      setSubmitError("Please select a bank.")
-      return
-    }
-
-    if (!formData.category) {
-      setSubmitError("Please select a document category.")
-      return
-    }
+    if (!selectedFile) return setSubmitError("Please upload a document file before submitting.")
+    if (!formData.documentName.trim()) return setSubmitError("Document name is required.")
+    if (!formData.bankId) return setSubmitError("Please select a bank.")
+    if (!formData.category) return setSubmitError("Please select a document category.")
 
     setIsSubmitting(true)
-
     try {
       await uploadKnowledgeDocument({
         document_name: formData.documentName,
@@ -192,6 +305,8 @@ export default function KnowledgeBasePage() {
         version: "1.0",
         description: "",
       })
+      loadDocuments()
+      loadComparison(reviewedOnly) // keep comparison table in sync automatically
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
     } finally {
@@ -199,12 +314,75 @@ export default function KnowledgeBasePage() {
     }
   }
 
-  const activeBanks = bankList.filter((bank) => bank.status === "active")
+  const handleExtract = async (doc: KnowledgeDocumentRead) => {
+    setExtractingId(doc.id)
+    try {
+      const updated = await runExtraction(doc.id)
+      setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
+      loadComparison(reviewedOnly)
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : "Extraction failed")
+    } finally {
+      setExtractingId(null)
+    }
+  }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + " B"
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB"
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB"
+  const handleExtractRow = async (documentId: number) => {
+    setExtractingId(documentId)
+    try {
+      await runExtraction(documentId)
+      loadDocuments()
+      loadComparison(reviewedOnly)
+    } catch (err) {
+      setComparisonError(err instanceof Error ? err.message : "Extraction failed")
+    } finally {
+      setExtractingId(null)
+    }
+  }
+
+  // --- Delete flow, backed by DeleteConfirmDialog instead of window.confirm ---
+  const openDeleteDialog = (doc: KnowledgeDocumentRead) => setDeleteTarget(doc)
+
+  const closeDeleteDialog = () => {
+    if (isDeleting) return
+    setDeleteTarget(null)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    setDocsError(null)
+    try {
+      await deleteKnowledgeDocument(deleteTarget.id)
+      setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id))
+      setDeleteTarget(null)
+      loadComparison(reviewedOnly) // keep comparison table in sync automatically
+    } catch (err) {
+      console.error("Delete failed", err)
+      setDocsError(err instanceof Error ? err.message : "Failed to delete document")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleDownload = async (doc: KnowledgeDocumentRead) => {
+    setDocsError(null)
+    try {
+      const blob = await downloadKnowledgeDocument(doc.id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = doc.original_filename || doc.document_name
+      // Must be attached to the DOM for the click to reliably trigger a
+      // download in some browsers (notably Firefox).
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Download failed", err)
+      setDocsError(err instanceof Error ? err.message : "Failed to download document")
+    }
   }
 
   return (
@@ -213,7 +391,7 @@ export default function KnowledgeBasePage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold text-white">Knowledge Repository</h1>
         <p className="text-muted-foreground">
-          Upload and manage bank policy documents and case studies
+          Upload bank policy documents and case studies, extract structured data with AI, and review before it powers loan comparisons
         </p>
       </div>
 
@@ -222,7 +400,6 @@ export default function KnowledgeBasePage() {
         <GlassCard className="p-6">
           <h2 className="mb-4 text-lg font-semibold text-white">Document Upload</h2>
 
-          {/* Dropzone */}
           <div
             {...getRootProps()}
             className={cn(
@@ -254,7 +431,6 @@ export default function KnowledgeBasePage() {
             </div>
           </div>
 
-          {/* Uploaded Files */}
           <AnimatePresence>
             {files.length > 0 && (
               <motion.div
@@ -313,8 +489,6 @@ export default function KnowledgeBasePage() {
                         </button>
                       </div>
                     </div>
-
-                    {/* Progress bar only — no pipeline/stage detail shown */}
                     {(file.status === "uploading" || file.status === "processing") && (
                       <div className="mt-4">
                         <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -346,9 +520,7 @@ export default function KnowledgeBasePage() {
                   id="documentName"
                   placeholder="Enter document name"
                   value={formData.documentName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, documentName: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, documentName: e.target.value })}
                   className="border-white/10 bg-white/5"
                 />
               </div>
@@ -386,9 +558,7 @@ export default function KnowledgeBasePage() {
                 <Label htmlFor="category">Category</Label>
                 <Select
                   value={formData.category}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, category: value })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, category: value })}
                 >
                   <SelectTrigger className="border-white/10 bg-white/5">
                     <SelectValue placeholder="Select category" />
@@ -409,9 +579,7 @@ export default function KnowledgeBasePage() {
                   id="version"
                   placeholder="1.0"
                   value={formData.version}
-                  onChange={(e) =>
-                    setFormData({ ...formData, version: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, version: e.target.value })}
                   className="border-white/10 bg-white/5"
                 />
               </div>
@@ -422,9 +590,7 @@ export default function KnowledgeBasePage() {
                   id="effectiveDate"
                   type="date"
                   value={formData.effectiveDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, effectiveDate: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, effectiveDate: e.target.value })}
                   className="border-white/10 bg-white/5"
                 />
               </div>
@@ -435,9 +601,7 @@ export default function KnowledgeBasePage() {
                   id="expiryDate"
                   type="date"
                   value={formData.expiryDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, expiryDate: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
                   className="border-white/10 bg-white/5"
                 />
               </div>
@@ -449,9 +613,7 @@ export default function KnowledgeBasePage() {
                 id="description"
                 placeholder="Enter document description"
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="min-h-24 border-white/10 bg-white/5"
               />
             </div>
@@ -464,6 +626,7 @@ export default function KnowledgeBasePage() {
 
             <div className="flex flex-col gap-3 pt-4 sm:flex-row">
               <Button
+                type="button"
                 className="flex-1 bg-linear-to-r from-primary to-indigo-500"
                 onClick={() => handleSubmit("active")}
                 disabled={isSubmitting}
@@ -476,6 +639,7 @@ export default function KnowledgeBasePage() {
                 Upload Document
               </Button>
               <Button
+                type="button"
                 variant="outline"
                 className="border-white/10 bg-white/5"
                 onClick={() => handleSubmit("draft")}
@@ -492,6 +656,235 @@ export default function KnowledgeBasePage() {
           </form>
         </GlassCard>
       </div>
+
+      {/* Documents needing extraction */}
+      <GlassCard className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Documents needing extraction</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Extract structured data with AI, then review before it appears in the comparison table
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-white/10 bg-white/5"
+            onClick={loadDocuments}
+            disabled={isLoadingDocs}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoadingDocs && "animate-spin")} />
+          </Button>
+        </div>
+
+        {docsError && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {docsError}
+          </div>
+        )}
+
+        {isLoadingDocs ? (
+          <div className="flex items-center justify-center py-10 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            Loading documents...
+          </div>
+        ) : needsExtractionDocuments.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            Nothing pending — every uploaded document has been extracted.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {needsExtractionDocuments.map((doc) => {
+              const isExtracting = extractingId === doc.id || doc.extraction_status === "extracting"
+              const isDeletingThis = isDeleting && deleteTarget?.id === doc.id
+
+              return (
+                <div
+                  key={doc.id}
+                  className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="rounded-lg bg-primary/20 p-2 shrink-0">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-white truncate">{doc.document_name}</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Building2 className="h-3 w-3" />
+                          {doc.bank?.bank_name ?? `Bank #${doc.bank_id}`}
+                        </span>
+                        <span>{doc.category === "bank_policy" ? "Bank Policy" : "Case Study"}</span>
+                        <span>v{doc.version}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <DocStatusBadge status={doc.status} />
+                        <ExtractionBadge status={doc.extraction_status} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-linear-to-r from-primary to-indigo-500"
+                      onClick={() => handleExtract(doc)}
+                      disabled={isExtracting}
+                    >
+                      {isExtracting ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      {doc.extraction_status === "failed" ? "Retry Extract" : "Extract"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-white/10 bg-white/5 px-2"
+                      onClick={() => handleDownload(doc)}
+                      title="Download original file"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10 px-2"
+                      onClick={() => openDeleteDialog(doc)}
+                      disabled={isDeletingThis}
+                      title="Delete document"
+                    >
+                      {isDeletingThis ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </GlassCard>
+
+      <GlassCard className="p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">Policy comparison</p>
+            <h2 className="mt-2 text-xl font-semibold text-white">Bank comparison table</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Updates automatically whenever a document is uploaded, extracted, or deleted.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={reviewedOnly}
+                onChange={(e) => setReviewedOnly(e.target.checked)}
+                className="rounded border-white/20 bg-white/5"
+              />
+              Approved only
+            </label>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/10 bg-white/5"
+              onClick={() => loadComparison(reviewedOnly)}
+              disabled={isLoadingComparison}
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", isLoadingComparison && "animate-spin")} />
+            </Button>
+          </div>
+        </div>
+
+        {comparisonError && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {comparisonError}
+          </div>
+        )}
+
+        <div className="mt-6 overflow-x-auto rounded-3xl border border-white/10 bg-white/5 p-4">
+          {isLoadingComparison ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Loading comparison...
+            </div>
+          ) : !comparison || comparison.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              {reviewedOnly ? "No approved policies found." : "No extracted policy data available."}
+            </p>
+          ) : (
+            <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  <th className="px-4 py-3">Bank</th>
+                  <th className="px-4 py-3">FOIR</th>
+                  <th className="px-4 py-3">ROI</th>
+                  <th className="px-4 py-3">CIBIL</th>
+                  <th className="px-4 py-3">LTV</th>
+                  <th className="px-4 py-3">Age</th>
+                  <th className="px-4 py-3">Income</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {comparison.rows.map((row) => (
+                  <tr key={`${row.bank_id}-${row.document_id}`} className="hover:bg-white/5">
+                    <td className="px-4 py-3 font-medium text-white">{row.bank_name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.foir, "%")}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.roi, "%")}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.cibil)}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.ltv, "%")}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{row.age ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {row.income ? `₹${row.income.toLocaleString()}` : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {(row.extraction_status === "pending" || row.extraction_status === "failed") ? (
+                        <Button
+                          size="sm"
+                          className="bg-linear-to-r from-primary to-indigo-500"
+                          onClick={() => handleExtractRow(row.document_id)}
+                          disabled={extractingId === row.document_id}
+                        >
+                          {extractingId === row.document_id ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                          )}
+                          {row.extraction_status === "failed" ? "Retry" : "Extract"}
+                        </Button>
+                      ) : (
+                        <span className="text-xs uppercase tracking-[0.15em] text-muted-foreground">
+                          {row.extraction_status ?? "N/A"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </GlassCard>
+
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Document"
+        description="Are you sure you want to delete"
+        itemName={deleteTarget?.document_name}
+        loading={isDeleting}
+        onConfirm={confirmDelete}
+        onCancel={closeDeleteDialog}
+      />
     </div>
   )
 }

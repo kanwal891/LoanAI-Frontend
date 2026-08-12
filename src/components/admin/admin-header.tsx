@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { Bell, Search, User, Moon, Sun } from "lucide-react"
+import { useEffect, useState } from "react"
+import { getCurrentUser, type UserRead, ApiError } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -15,6 +17,30 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export function AdminHeader() {
+  const [user, setUser] = useState<UserRead | null>(null)
+  const [loadingUser, setLoadingUser] = useState(true)
+  const [userError, setUserError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    setLoadingUser(true)
+    setUserError(null)
+    getCurrentUser()
+      .then((u) => {
+        if (!mounted) return
+        setUser(u)
+      })
+      .catch((err) => {
+        if (!mounted) return
+        if (err instanceof ApiError) setUserError(err.message)
+        else setUserError(String(err))
+      })
+      .finally(() => mounted && setLoadingUser(false))
+
+    return () => {
+      mounted = false
+    }
+  }, [])
   return (
     <motion.header
       initial={{ y: -20, opacity: 0 }}
@@ -39,20 +65,23 @@ export function AdminHeader() {
        
         {/* User Menu */}
 <DropdownMenu>
-  <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger asChild>
     <Button
       variant="ghost"
       className="flex items-center gap-2 px-2 text-muted-foreground hover:text-white"
     >
-      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-indigo-500">
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-primary to-indigo-500">
         <User className="h-4 w-4 text-white" />
       </div>
 
       <div className="hidden text-left sm:block">
-        <p className="text-sm font-medium text-white">Admin User</p>
+        <p className="text-sm font-medium text-white">{loadingUser ? "Loading..." : user?.full_name ?? user?.username ?? "Admin User"}</p>
         <p className="text-xs text-muted-foreground">
-          admin@loanai.com
+          {loadingUser ? "" : user?.email ?? "admin@loanai.com"}
         </p>
+        {userError ? (
+          <p className="text-xs text-rose-400 mt-1">{userError}</p>
+        ) : null}
       </div>
     </Button>
   </DropdownMenuTrigger>
