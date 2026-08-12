@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   User,
   Lock,
@@ -13,11 +13,47 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
+import { getCurrentUser, type UserRead, ApiError } from "@/lib/api"
 
 export default function SettingsPage() {
   const [section, setSection] = useState<"settings" | "admin">("settings")
   const [isSaving, setIsSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
+  const [user, setUser] = useState<UserRead | null>(null)
+  const [loadingUser, setLoadingUser] = useState(true)
+  const [userError, setUserError] = useState<string | null>(null)
+  const [username, setUsername] = useState("")
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+
+  useEffect(() => {
+    let mounted = true
+
+    setLoadingUser(true)
+    setUserError(null)
+
+    getCurrentUser()
+      .then((currentUser) => {
+        if (!mounted) return
+        setUser(currentUser)
+        setUsername(currentUser.username ?? "")
+        setFullName(currentUser.full_name ?? "")
+        setEmail(currentUser.email ?? "")
+      })
+      .catch((err) => {
+        if (!mounted) return
+        if (err instanceof ApiError) setUserError(err.message)
+        else setUserError(String(err))
+      })
+      .finally(() => {
+        if (!mounted) return
+        setLoadingUser(false)
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -48,27 +84,49 @@ export default function SettingsPage() {
           {/* Profile */}
           <GlassCard className="p-6">
             <div className="mb-6 flex items-center gap-3">
-              <div className="rounded-lg bg-gradient-to-br from-primary to-indigo-500 p-2">
+              <div className="rounded-lg bg-linear-to-br from-primary to-indigo-500 p-2">
                 <User className="h-5 w-5 text-white" />
               </div>
               <h2 className="font-semibold text-white">Profile</h2>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label>Full Name</Label>
-                <Input defaultValue="Jane Doe" className="border-white/10 bg-white/5" />
+                <Label>Username</Label>
+                <Input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={loadingUser ? "Loading..." : "admin"}
+                  className="border-white/10 bg-white/5"
+                />
               </div>
               <div className="space-y-1">
+                <Label>Full Name</Label>
+                <Input
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder={loadingUser ? "Loading..." : "Jane Doe"}
+                  className="border-white/10 bg-white/5"
+                />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
                 <Label>Email Address</Label>
-                <Input defaultValue="jane.doe@email.com" className="border-white/10 bg-white/5" />
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={loadingUser ? "Loading..." : "admin@example.com"}
+                  className="border-white/10 bg-white/5"
+                />
               </div>
             </div>
+            {userError ? (
+              <p className="mt-3 text-sm text-rose-400">{userError}</p>
+            ) : null}
           </GlassCard>
 
           {/* Change Password */}
           <GlassCard className="p-6">
             <div className="mb-6 flex items-center gap-3">
-              <div className="rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 p-2">
+              <div className="rounded-lg bg-linear-to-br from-emerald-500 to-teal-500 p-2">
                 <Lock className="h-5 w-5 text-white" />
               </div>
               <h2 className="font-semibold text-white">Change Password</h2>
@@ -93,7 +151,7 @@ export default function SettingsPage() {
           {/* Notifications */}
           <GlassCard className="p-6">
             <div className="mb-6 flex items-center gap-3">
-              <div className="rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 p-2">
+              <div className="rounded-lg bg-linear-to-br from-amber-500 to-orange-500 p-2">
                 <Bell className="h-5 w-5 text-white" />
               </div>
               <h2 className="font-semibold text-white">Notifications</h2>
@@ -112,7 +170,7 @@ export default function SettingsPage() {
             <Button
               onClick={handleSave}
               disabled={isSaving}
-              className="min-w-[160px] bg-gradient-to-br from-primary to-indigo-500 text-white"
+              className="min-w-40 bg-linear-to-br from-primary to-indigo-500 text-white"
             >
               {isSaving ? (
                 <>

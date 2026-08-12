@@ -1,6 +1,7 @@
 "use client"
 
-import { Trash2, Loader2 } from "lucide-react"
+import { Trash2, Loader2, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 import {
   AlertDialog,
@@ -25,8 +26,8 @@ interface DeleteConfirmDialogProps {
 
 export function DeleteConfirmDialog({
   open,
-  title = "Delete Document",
-  description = "Are you sure you want to delete",
+  title = "Delete document",
+  description = "This will permanently remove",
   itemName,
   loading = false,
   onConfirm,
@@ -34,64 +35,76 @@ export function DeleteConfirmDialog({
 }: DeleteConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={(v) => !v && !loading && onCancel()}>
-      <AlertDialogContent className="fixed bottom-4 right-4 max-w-[22rem] border-red-500/20 bg-[#0B1220] text-white shadow-2xl">
-        <AlertDialogHeader className="grid gap-4 text-left">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10">
-            <Trash2 className="h-6 w-6 text-red-400" />
+      <AlertDialogContent
+        className={[
+          // Center in viewport instead of pinning to a corner
+          "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+          "w-[calc(100%-2rem)] max-w-sm",
+          // Match the app's glass-card language
+          "rounded-3xl border border-white/10 bg-[#0a0f1a]/95 p-6",
+          "shadow-2xl shadow-black/50 backdrop-blur-xl",
+        ].join(" ")}
+      >
+        <button
+          onClick={() => !loading && onCancel()}
+          disabled={loading}
+          className="absolute right-4 top-4 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <AlertDialogHeader className="items-start gap-0 text-left">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/10 ring-1 ring-red-500/20">
+            <Trash2 className="h-5 w-5 text-red-400" />
           </div>
 
-          <AlertDialogTitle className="text-base font-semibold text-white">
+          <AlertDialogTitle className="mt-4 text-base font-semibold text-white">
             {title}
           </AlertDialogTitle>
 
-          <AlertDialogDescription className="mt-2 text-sm text-gray-300">
-            {description}
+          <AlertDialogDescription className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            {description}{" "}
+            {itemName ? (
+              <span className="font-medium text-white">"{itemName}"</span>
+            ) : null}
+            . This can't be undone.
           </AlertDialogDescription>
-          {itemName ? (
-            <p className="mt-2 text-sm font-semibold text-white">"{itemName}"</p>
-          ) : null}
-          <p className="mt-3 text-xs text-red-400">
-            This action cannot be undone.
-          </p>
         </AlertDialogHeader>
 
-        <AlertDialogFooter className="mt-4 flex items-center justify-end gap-2">
-          <AlertDialogCancel
+        <AlertDialogFooter className="mt-6 flex-row justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
             disabled={loading}
-            onClick={(e) => {
-              // Radix auto-closes on click already for Cancel, which is fine —
-              // but guard it so it can't fire mid-delete either.
-              if (loading) e.preventDefault()
-            }}
-            className="border border-white/10 bg-white/5 px-3 py-2 text-sm text-white hover:bg-white/10"
+            onClick={() => !loading && onCancel()}
+            className="mt-0"
           >
             Cancel
-          </AlertDialogCancel>
+          </Button>
 
-          <AlertDialogAction
+          <Button
+            variant="destructive"
+            size="sm"
             disabled={loading}
-            onClick={(e) => {
-              // AlertDialogAction closes the dialog by default on click.
-              // Prevent that so the dialog stays open (showing the loading
-              // state) until the parent's onConfirm finishes and explicitly
-              // closes it by flipping `open` to false.
-              e.preventDefault()
+            onClick={() => {
+              if (loading) return
               onConfirm()
             }}
-            className="bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700 focus:ring-red-500"
+            className="mt-0"
           >
             {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Deleting...
-              </>
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Deleting
+              </span>
             ) : (
-              <>
-                <Trash2 className="mr-2 h-4 w-4" />
+              <span className="flex items-center gap-2">
+                <Trash2 className="h-4 w-4" />
                 Delete
-              </>
+              </span>
             )}
-          </AlertDialogAction>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

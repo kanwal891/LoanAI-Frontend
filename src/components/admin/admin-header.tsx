@@ -75,10 +75,7 @@ export function AdminHeader() {
       </div>
 
       <div className="hidden text-left sm:block">
-        <p className="text-sm font-medium text-white">{loadingUser ? "Loading..." : user?.full_name ?? user?.username ?? "Admin User"}</p>
-        <p className="text-xs text-muted-foreground">
-          {loadingUser ? "" : user?.email ?? "admin@loanai.com"}
-        </p>
+        <p className="text-sm font-medium text-white">{loadingUser ? "Loading..." : user?.username ?? "admin"}</p>
         {userError ? (
           <p className="text-xs text-rose-400 mt-1">{userError}</p>
         ) : null}
