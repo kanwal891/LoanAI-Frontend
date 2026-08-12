@@ -40,13 +40,11 @@ import {
   listKnowledgeDocuments,
   uploadKnowledgeDocument,
   runExtraction,
-  getPolicyComparison,
   deleteKnowledgeDocument,
   downloadKnowledgeDocument,
   type BankRead,
   type DocumentCategory,
   type KnowledgeDocumentRead,
-  type PolicyComparisonResponse,
 } from "@/lib/api"
 
 const categories: { label: string; value: DocumentCategory }[] = [
@@ -162,11 +160,6 @@ export default function KnowledgeBasePage() {
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeDocumentRead | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const [comparison, setComparison] = useState<PolicyComparisonResponse | null>(null)
-  const [isLoadingComparison, setIsLoadingComparison] = useState(true)
-  const [comparisonError, setComparisonError] = useState<string | null>(null)
-  const [reviewedOnly, setReviewedOnly] = useState(true)
-
   const loadDocuments = useCallback(async () => {
     setIsLoadingDocs(true)
     setDocsError(null)
@@ -177,19 +170,6 @@ export default function KnowledgeBasePage() {
       setDocsError(err instanceof Error ? err.message : "Failed to load documents")
     } finally {
       setIsLoadingDocs(false)
-    }
-  }, [])
-
-  const loadComparison = useCallback(async (reviewed: boolean) => {
-    setIsLoadingComparison(true)
-    setComparisonError(null)
-    try {
-      const result = await getPolicyComparison(reviewed)
-      setComparison(result)
-    } catch (err) {
-      setComparisonError(err instanceof Error ? err.message : "Failed to load comparison")
-    } finally {
-      setIsLoadingComparison(false)
     }
   }, [])
 
@@ -207,9 +187,8 @@ export default function KnowledgeBasePage() {
     }
     loadBanks()
     loadDocuments()
-    loadComparison(reviewedOnly)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadDocuments, loadComparison])
+  }, [loadDocuments])
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => ({
@@ -306,7 +285,6 @@ export default function KnowledgeBasePage() {
         description: "",
       })
       loadDocuments()
-      loadComparison(reviewedOnly) // keep comparison table in sync automatically
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
     } finally {
@@ -319,22 +297,8 @@ export default function KnowledgeBasePage() {
     try {
       const updated = await runExtraction(doc.id)
       setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
-      loadComparison(reviewedOnly)
     } catch (err) {
       setDocsError(err instanceof Error ? err.message : "Extraction failed")
-    } finally {
-      setExtractingId(null)
-    }
-  }
-
-  const handleExtractRow = async (documentId: number) => {
-    setExtractingId(documentId)
-    try {
-      await runExtraction(documentId)
-      loadDocuments()
-      loadComparison(reviewedOnly)
-    } catch (err) {
-      setComparisonError(err instanceof Error ? err.message : "Extraction failed")
     } finally {
       setExtractingId(null)
     }
@@ -356,7 +320,6 @@ export default function KnowledgeBasePage() {
       await deleteKnowledgeDocument(deleteTarget.id)
       setDocuments((prev) => prev.filter((d) => d.id !== deleteTarget.id))
       setDeleteTarget(null)
-      loadComparison(reviewedOnly) // keep comparison table in sync automatically
     } catch (err) {
       console.error("Delete failed", err)
       setDocsError(err instanceof Error ? err.message : "Failed to delete document")
@@ -771,109 +734,6 @@ export default function KnowledgeBasePage() {
             })}
           </div>
         )}
-      </GlassCard>
-
-      <GlassCard className="p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">Policy comparison</p>
-            <h2 className="mt-2 text-xl font-semibold text-white">Bank comparison table</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Updates automatically whenever a document is uploaded, extracted, or deleted.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={reviewedOnly}
-                onChange={(e) => setReviewedOnly(e.target.checked)}
-                className="rounded border-white/20 bg-white/5"
-              />
-              Approved only
-            </label>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-white/10 bg-white/5"
-              onClick={() => loadComparison(reviewedOnly)}
-              disabled={isLoadingComparison}
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", isLoadingComparison && "animate-spin")} />
-            </Button>
-          </div>
-        </div>
-
-        {comparisonError && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {comparisonError}
-          </div>
-        )}
-
-        <div className="mt-6 overflow-x-auto rounded-3xl border border-white/10 bg-white/5 p-4">
-          {isLoadingComparison ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin mr-2" />
-              Loading comparison...
-            </div>
-          ) : !comparison || comparison.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">
-              {reviewedOnly ? "No approved policies found." : "No extracted policy data available."}
-            </p>
-          ) : (
-            <table className="min-w-full divide-y divide-white/10 text-left text-sm">
-              <thead>
-                <tr className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  <th className="px-4 py-3">Bank</th>
-                  <th className="px-4 py-3">FOIR</th>
-                  <th className="px-4 py-3">ROI</th>
-                  <th className="px-4 py-3">CIBIL</th>
-                  <th className="px-4 py-3">LTV</th>
-                  <th className="px-4 py-3">Age</th>
-                  <th className="px-4 py-3">Income</th>
-                  <th className="px-4 py-3">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10">
-                {comparison.rows.map((row) => (
-                  <tr key={`${row.bank_id}-${row.document_id}`} className="hover:bg-white/5">
-                    <td className="px-4 py-3 font-medium text-white">{row.bank_name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.foir, "%")}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.roi, "%")}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.cibil)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.ltv, "%")}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.age ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {row.income ? `₹${row.income.toLocaleString()}` : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {(row.extraction_status === "pending" || row.extraction_status === "failed") ? (
-                        <Button
-                          size="sm"
-                          className="bg-linear-to-r from-primary to-indigo-500"
-                          onClick={() => handleExtractRow(row.document_id)}
-                          disabled={extractingId === row.document_id}
-                        >
-                          {extractingId === row.document_id ? (
-                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                          )}
-                          {row.extraction_status === "failed" ? "Retry" : "Extract"}
-                        </Button>
-                      ) : (
-                        <span className="text-xs uppercase tracking-[0.15em] text-muted-foreground">
-                          {row.extraction_status ?? "N/A"}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
       </GlassCard>
 
       <DeleteConfirmDialog

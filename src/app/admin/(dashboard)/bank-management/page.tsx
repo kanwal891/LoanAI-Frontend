@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Loader2, AlertCircle } from "lucide-react"
+import { Plus, Loader2, AlertCircle, RefreshCw } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,9 +11,10 @@ import {
   createBank,
   updateBank,
   deleteBank,
+  getPolicyComparison,
   type BankRead,
+  type PolicyComparisonResponse,
 } from "@/lib/api"
-import { bankComparisonData } from "@/lib/mock-bank-data"
 
 export default function BankManagementPage() {
   const [bankList, setBankList] = useState<BankRead[]>([])
@@ -28,8 +29,14 @@ export default function BankManagementPage() {
   // Tracks which bank row is mid-request, so only that row's buttons
   // show a spinner/disable instead of freezing the whole list.
   const [pendingId, setPendingId] = useState<number | null>(null)
+  const [comparison, setComparison] = useState<PolicyComparisonResponse | null>(null)
+  const [isLoadingComparison, setIsLoadingComparison] = useState(true)
+  const [comparisonError, setComparisonError] = useState<string | null>(null)
+  const [reviewedOnly, setReviewedOnly] = useState(true)
 
   const activeBanks = bankList.filter((bank) => bank.status === "active")
+  const comparisonRows = comparison?.rows ?? []
+  const banksCompared = comparison?.banks_compared ?? 0
   const editingBank = bankList.find((bank) => bank.id === editingBankId) ?? null
 
   const loadBanks = async () => {
@@ -48,6 +55,26 @@ export default function BankManagementPage() {
   useEffect(() => {
     loadBanks()
   }, [])
+
+  useEffect(() => {
+    loadComparison(reviewedOnly)
+  }, [reviewedOnly])
+
+  const loadComparison = async (reviewed: boolean) => {
+    setIsLoadingComparison(true)
+    setComparisonError(null)
+    try {
+      const result = await getPolicyComparison(reviewed)
+      setComparison(result)
+    } catch (err) {
+      setComparisonError(err instanceof Error ? err.message : "Failed to load comparison")
+    } finally {
+      setIsLoadingComparison(false)
+    }
+  }
+
+  const formatMetric = (value: number | null, suffix = "") =>
+    value === null || value === undefined ? "—" : `${value}${suffix}`
 
   const handleBankFormSubmit = async () => {
     const name = bankNameInput.trim()
@@ -294,10 +321,6 @@ export default function BankManagementPage() {
         </div>
       </GlassCard>
 
-      {/* NOTE: this table still uses mock data — your backend's Bank model only
-          has bank_name + status, no FOIR/ROI/CIBIL/LTV/age/income fields.
-          If those need to be real, the backend model + schema need those
-          columns added first. */}
       <GlassCard className="p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -307,7 +330,7 @@ export default function BankManagementPage() {
             <h2 className="mt-2 text-xl font-semibold text-white">Policy-level bank overview</h2>
           </div>
           <div className="rounded-3xl bg-white/5 px-4 py-3 text-sm text-white">
-            Banks compared: <span className="font-semibold">{bankComparisonData.length}</span>
+            Banks compared: <span className="font-semibold">{banksCompared}</span>
           </div>
         </div>
 
@@ -325,15 +348,15 @@ export default function BankManagementPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {bankComparisonData.map((row) => (
-                <tr key={row.bank} className="hover:bg-white/5">
-                  <td className="px-4 py-3 font-medium text-white">{row.bank}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.foir}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.roi}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.cibil}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.ltv}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.age}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.income}</td>
+              {comparisonRows.map((row) => (
+                <tr key={row.bank_id + "-" + row.document_id} className="hover:bg-white/5">
+                  <td className="px-4 py-3 font-medium text-white">{row.bank_name}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.foir)}%</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.roi)}%</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.cibil)}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.ltv)}%</td>
+                  <td className="px-4 py-3 text-muted-foreground">{row.age ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatMetric(row.income)}</td>
                 </tr>
               ))}
             </tbody>
