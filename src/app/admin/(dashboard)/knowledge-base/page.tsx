@@ -358,9 +358,9 @@ export default function KnowledgeBasePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 items-stretch">
         {/* Upload Section */}
-        <GlassCard className="p-6">
+        <GlassCard className="p-6 h-full">
           <h2 className="mb-4 text-lg font-semibold text-white">Document Upload</h2>
 
           <div
@@ -472,7 +472,7 @@ export default function KnowledgeBasePage() {
         </GlassCard>
 
         {/* Document Metadata Form */}
-        <GlassCard className="p-6">
+        <GlassCard className="p-6 h-full">
           <h2 className="mb-4 text-lg font-semibold text-white">Document Details</h2>
 
           <form className="space-y-4">
