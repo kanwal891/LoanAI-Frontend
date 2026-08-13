@@ -231,15 +231,38 @@ export async function uploadKnowledgeDocument(
   return res.json()
 }
 
-export function updateKnowledgeDocument(
+export async function updateKnowledgeDocument(
   id: number,
   data: KnowledgeDocumentUpdateInput
 ): Promise<KnowledgeDocumentRead> {
-  return apiFetch<KnowledgeDocumentRead>(`/knowledge/documents/${id}`, {
+  const token = getToken()
+  const formData = new FormData()
+
+  if (data.document_name !== undefined) formData.append("document_name", data.document_name)
+  if (data.bank_id !== undefined) formData.append("bank_id", String(data.bank_id))
+  if (data.category !== undefined) formData.append("category", data.category)
+  if (data.version !== undefined) formData.append("version", data.version)
+  if (data.effective_date) formData.append("effective_date", data.effective_date)
+  if (data.expiry_date) formData.append("expiry_date", data.expiry_date)
+  if (data.description !== undefined) formData.append("description", data.description)
+  if (data.status !== undefined) formData.append("status", data.status)
+
+  const res = await fetch(`${API_BASE_URL}/knowledge/documents/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
   })
+
+  if (res.status === 401) {
+    clearToken()
+    throw new ApiError("Session expired. Please log in again.", 401)
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new ApiError(text || `Failed to update document (${res.status})`, res.status)
+  }
+
+  return res.json()
 }
 
 export async function deleteKnowledgeDocument(id: number): Promise<void> {

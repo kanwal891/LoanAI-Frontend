@@ -102,6 +102,11 @@ export default function EditDocumentPage() {
         status: formData.status as DocumentStatus,
       })
       router.push("/admin/documents")
+      // Next.js's client-side Router Cache can otherwise restore the
+      // documents list from its previous visit instead of refetching, so
+      // the edit you just saved wouldn't show up until a manual reload.
+      // refresh() invalidates that cache entry and forces a refetch.
+      router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save document.")
     } finally {

@@ -24,6 +24,9 @@ interface FloatingInputProps {
   prefix?: string
   disabled?: boolean
   showCalendar?: boolean
+  min?: number
+  max?: number
+  step?: number
 }
 const ALWAYS_FLOATED_TYPES = ["date", "time", "datetime-local", "month", "week"]
 
@@ -38,7 +41,10 @@ export function FloatingInput({
   className = "",
   prefix,
   disabled = false,
-  showCalendar = false
+  showCalendar = false,
+  min,
+  max,
+  step,
 }: FloatingInputProps) {
   const [isFocused, setIsFocused] = useState(false)
   const id = useId()
@@ -46,6 +52,20 @@ export function FloatingInput({
   const hasValue = value.length > 0
   const isDateLikeType = ALWAYS_FLOATED_TYPES.includes(type)
   const isActive = isFocused || hasValue || isDateLikeType
+
+  // Icon sits at left-4 (16px) and is ~20px wide, so content clears it at pl-12 (48px).
+  // When a prefix (e.g. "₹") is also shown, it's placed right after the icon at left-12,
+  // and the input needs extra left padding (pl-20) to clear both icon + prefix text.
+  // These are combined into ONE padding class below instead of two separate conditional
+  // classes, which used to silently conflict whenever a field had both an icon and a prefix.
+  const showPrefix = Boolean(prefix) && isActive
+  const inputLeftPadding = icon && showPrefix
+    ? "pl-20"
+    : icon
+    ? "pl-12"
+    : showPrefix
+    ? "pl-10"
+    : ""
 
   return (
     <div className={cn("relative", className)}>
@@ -56,7 +76,12 @@ export function FloatingInput({
           </div>
         )}
         {prefix && isActive && (
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+          <span
+            className={cn(
+              "absolute top-1/2 -translate-y-1/2 text-muted-foreground text-sm z-10",
+              icon ? "left-12" : "left-4"
+            )}
+          >
             {prefix}
           </span>
         )}
@@ -69,6 +94,9 @@ export function FloatingInput({
           onBlur={() => setIsFocused(false)}
           placeholder={isActive && !isDateLikeType ? placeholder : ""}
           disabled={disabled}
+          min={type === "number" ? min : undefined}
+          max={type === "number" ? max : undefined}
+          step={type === "number" ? step : undefined}
           className={cn(
             "w-full px-4 py-4 pt-6 rounded-xl glass-input text-white transition-all duration-300",
 showCalendar && "pr-12",

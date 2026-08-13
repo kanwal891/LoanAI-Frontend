@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   Sparkles, 
@@ -8,7 +8,8 @@ import {
   ArrowRight,
   ChevronRight,
   ThumbsUp,
-  ThumbsDown
+  ThumbsDown,
+  FileWarning
 } from "lucide-react"
 import Link from "next/link"
 import { GlassNavbar } from "@/components/glass-navbar"
@@ -19,87 +20,110 @@ import { AnimatedCounter } from "@/components/animated-counter"
 import { CircularProgress } from "@/components/circular-progress"
 import { FeedbackPopover } from "@/components/feedback-popover"
 
-const recommendations = [
-  {
-    bank: "HDFC Bank",
-    logo: "H",
-    rate: 10.5,
-    maxAmount: 1500000,
-    tenure: 60,
-    emi: 32424,
-    probability: 92,
-    processingFee: "1%",
-    features: ["Quick Disbursement", "Flexible Tenure", "No Hidden Charges"],
-    bestFor: "Best Overall Match"
-  },
-  {
-    bank: "ICICI Bank",
-    logo: "I",
-    rate: 10.75,
-    maxAmount: 1200000,
-    tenure: 48,
-    emi: 30876,
-    probability: 88,
-    processingFee: "1.5%",
-    features: ["Zero Foreclosure", "Online Processing", "Instant Approval"],
-    bestFor: "Lowest EMI"
-  },
-  {
-    bank: "SBI",
-    logo: "S",
-    rate: 11.0,
-    maxAmount: 1000000,
-    tenure: 60,
-    emi: 21742,
-    probability: 85,
-    processingFee: "0.5%",
-    features: ["Lowest Processing Fee", "Government Backed", "Long Tenure"],
-    bestFor: "Best for Govt. Employees"
-  },
-  {
-    bank: "Axis Bank",
-    logo: "A",
-    rate: 11.25,
-    maxAmount: 800000,
-    tenure: 36,
-    emi: 26443,
-    probability: 78,
-    processingFee: "2%",
-    features: ["Part Payment Allowed", "Balance Transfer", "Quick Approval"],
-    bestFor: "Fastest Processing"
-  },
-  {
-    bank: "Kotak Mahindra",
-    logo: "K",
-    rate: 10.99,
-    maxAmount: 1100000,
-    tenure: 48,
-    emi: 28234,
-    probability: 82,
-    processingFee: "1.25%",
-    features: ["Premium Service", "Dedicated RM", "Flexible Options"],
-    bestFor: "Premium Experience"
-  }
-]
-
-const creditInsights = [
-  { label: "CIBIL Score Impact", value: "Good", color: "#10B981" },
-  { label: "Debt-to-Income Ratio", value: "Healthy", color: "#6366F1" },
-  { label: "Credit Utilization", value: "Optimal", color: "#06B6D4" },
-  { label: "Payment History", value: "Excellent", color: "#10B981" },
-]
+// -----------------------------------------------------------------------
+// Eligibility API — adjust the import path below if userAPI.ts lives
+// somewhere else in your project.
+// -----------------------------------------------------------------------
+import {
+  isBalanceTransferResponse,
+  type FreshLoanResponse,
+  type BalanceTransferResponse,
+  type BankRecommendation,
+} from "@/lib/userAPI"
 
 type FeedbackValue = "up" | "down" | null
 
+/** Format a rupee amount as "₹XX L" / "₹X.XX Cr", matching the design's shorthand style. */
+function formatINR(amount: number): string {
+  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)} L`
+  return `₹${amount.toLocaleString("en-IN")}`
+}
+
+function formatDerivedLabel(key: string): string {
+  return key
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
+}
+
+function formatDerivedValue(value: unknown): string {
+  if (value == null) return "—"
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value.toLocaleString("en-IN") : value.toFixed(2)
+  }
+  if (typeof value === "boolean") return value ? "Yes" : "No"
+  return String(value)
+}
+
 export default function ResultsPage() {
-  const [selectedBank, setSelectedBank] = useState<string | null>(null)
+  const [selectedBank, setSelectedBank] = useState<number | null>(null)
+  const [result, setResult] = useState<FreshLoanResponse | BalanceTransferResponse | null>(null)
+  const [hasLoaded, setHasLoaded] = useState(false)
 
   const [feedback, setFeedback] = useState<FeedbackValue>(null)
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [feedbackText, setFeedbackText] = useState("")
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
 
-  const eligibilityScore = 87
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("eligibilityResult")
+      if (raw) setResult(JSON.parse(raw))
+    } catch {
+      setResult(null)
+    } finally {
+      setHasLoaded(true)
+    }
+  }, [])
+
+  const recommendations: BankRecommendation[] = result?.recommendations ?? []
+  const isBT = result ? isBalanceTransferResponse(result) : false
+
+  const topRecommendation = useMemo(
+    () => recommendations.find((r) => r.is_top_recommendation) ?? recommendations[0] ?? null,
+    [recommendations]
+  )
+
+  const bestRateRecommendation = useMemo(() => {
+    const withRates = recommendations.filter((r) => r.interest_rate != null)
+    if (withRates.length === 0) return null
+    return withRates.reduce((best, r) =>
+      (r.interest_rate as number) < (best.interest_rate as number) ? r : best
+    )
+  }, [recommendations])
+
+  const maxEligibleAmount = useMemo(() => {
+    const amounts = recommendations
+      .map((r) => r.max_amount)
+      .filter((a): a is number => a != null)
+    return amounts.length ? Math.max(...amounts) : null
+  }, [recommendations])
+
+  const avgInterestRate = useMemo(() => {
+    const rates = recommendations
+      .map((r) => r.interest_rate)
+      .filter((r): r is number => r != null)
+    if (!rates.length) return null
+    return rates.reduce((sum, r) => sum + r, 0) / rates.length
+  }, [recommendations])
+
+  const eligibilityScore = topRecommendation?.match_percent ?? 0
+  const banksEvaluated = result?.banks_evaluated ?? 0
+  const eligibleCount = recommendations.length
+
+  // Simple full-detail lookup (foir_percent / foir_source live on both
+  // FreshLoanBankResult and BalanceTransferBankResult).
+  const foirResult = useMemo(() => {
+    const results = (result?.results ?? []) as Array<{
+      eligible: boolean
+      foir_percent?: number | null
+      foir_source?: string | null
+    }>
+    return results.find((r) => r.eligible && r.foir_percent != null) ?? results[0] ?? null
+  }, [result])
+
+  const derived = isBT ? (result as BalanceTransferResponse).derived ?? {} : null
 
   const handleFeedback = (value: "up" | "down") => {
     setFeedback(value)
@@ -124,6 +148,34 @@ export default function ResultsPage() {
     setTimeout(() => {
       handleClosePopover()
     }, 1400)
+  }
+
+  // -----------------------------------------------------------------------
+  // No data yet (direct nav to /results, or sessionStorage cleared)
+  // -----------------------------------------------------------------------
+  if (hasLoaded && !result) {
+    return (
+      <main className="min-h-screen bg-[#080B14]">
+        <GlassNavbar variant="dashboard" />
+        <div className="pt-32 pb-12">
+          <div className="max-w-2xl mx-auto px-4 text-center">
+            <GlassCard className="p-10" glow>
+              <FileWarning className="w-10 h-10 text-[#FF6B35] mx-auto mb-4" />
+              <h1 className="text-2xl font-bold text-white mb-2">No Results Yet</h1>
+              <p className="text-muted-foreground mb-6">
+                We couldn't find a recent eligibility check. Please complete the application form first.
+              </p>
+              <Link href="/apply">
+                <MagneticButton variant="primary">
+                  Start Application
+                  <ArrowRight className="w-4 h-4" />
+                </MagneticButton>
+              </Link>
+            </GlassCard>
+          </div>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -155,7 +207,9 @@ export default function ResultsPage() {
                 Your AI Loan <span className="gradient-text-primary">Recommendations</span>
               </h1>
               <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
-                Based on your profile, here are your personalized loan options ranked by approval probability
+                {eligibleCount > 0
+                  ? `Based on your profile, here are your personalized loan options ranked by approval probability`
+                  : `Based on your profile, no banks currently match your eligibility criteria`}
               </p>
 
               {/* Main Score Card — equal-width, equal-height, same internal alignment */}
@@ -169,9 +223,11 @@ export default function ResultsPage() {
                       label="Eligible"
                     />
                     <div className="text-left">
-                      <p className="text-sm text-muted-foreground mb-1">Eligibility Score</p>
+                      <p className="text-sm text-muted-foreground mb-1">Top Match Score</p>
                       <p className="text-3xl font-bold text-white">{eligibilityScore}%</p>
-                      <p className="text-xs text-[#10B981]">Excellent Profile</p>
+                      <p className="text-xs text-[#10B981]">
+                        {eligibleCount > 0 ? `${eligibleCount} of ${banksEvaluated} banks` : "No matches found"}
+                      </p>
                     </div>
                   </div>
                 </GlassCard>
@@ -180,9 +236,15 @@ export default function ResultsPage() {
                   <div className="text-left">
                     <p className="text-sm text-muted-foreground mb-1">Maximum Eligible Amount</p>
                     <p className="text-3xl font-bold text-white">
-                      <AnimatedCounter value={15} prefix="₹" suffix=" Lakhs" />
+                      {maxEligibleAmount != null ? (
+                        formatINR(maxEligibleAmount)
+                      ) : (
+                        "—"
+                      )}
                     </p>
-                    <p className="text-xs text-[#6366F1]">Across 5 Banks</p>
+                    <p className="text-xs text-[#6366F1]">
+                      {eligibleCount > 0 ? `Across ${eligibleCount} bank${eligibleCount > 1 ? "s" : ""}` : ""}
+                    </p>
                   </div>
                 </GlassCard>
 
@@ -190,9 +252,13 @@ export default function ResultsPage() {
                   <div className="text-left">
                     <p className="text-sm text-muted-foreground mb-1">Best Interest Rate</p>
                     <p className="text-3xl font-bold text-white">
-                      <AnimatedCounter value={10.5} suffix="%" decimals={1} />
+                      {bestRateRecommendation?.interest_rate != null ? (
+                        <AnimatedCounter value={bestRateRecommendation.interest_rate} suffix="%" decimals={2} />
+                      ) : (
+                        "—"
+                      )}
                     </p>
-                    <p className="text-xs text-[#FF6B35]">HDFC Bank</p>
+                    <p className="text-xs text-[#FF6B35]">{bestRateRecommendation?.bank_name ?? ""}</p>
                   </div>
                 </GlassCard>
               </div>
@@ -250,120 +316,181 @@ export default function ResultsPage() {
               </div>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-6 items-stretch">
-              {recommendations.map((bank, index) => (
-                <motion.div
-                  key={bank.bank}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="h-full"
-                >
-                  <GlassCard 
-                    className={`p-6 h-full flex flex-col cursor-pointer ${selectedBank === bank.bank ? "border-[#1B4FBB] shadow-[0_0_30px_rgba(27,79,187,0.3)]" : ""}`}
-                    onClick={() => setSelectedBank(bank.bank)}
-                    glow
+            {recommendations.length === 0 ? (
+              <GlassCard className="p-8 text-center" glow>
+                <p className="text-muted-foreground">
+                  No banks matched your current profile. Try adjusting your loan amount or check back after
+                  improving your eligibility factors.
+                </p>
+              </GlassCard>
+            ) : (
+              <div className="grid lg:grid-cols-2 gap-6 items-stretch">
+                {recommendations.map((bank, index) => (
+                  <motion.div
+                    key={bank.bank_id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="h-full"
                   >
-                    {/* Reserved badge slot — same height whether or not a badge is shown,
-                        so every card starts its content at the same vertical position. */}
-                    <div className="mb-4 h-7">
-                      {index === 0 && (
-                        <div className="inline-flex px-3 py-1 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#FF8F6B] text-xs font-medium text-white">
-                          Top Recommendation
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-start gap-4 flex-1">
-                      {/* Bank Logo */}
-                      <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center text-2xl font-bold text-white shrink-0">
-                        {bank.logo}
+                    <GlassCard 
+                      className={`p-6 h-full flex flex-col cursor-pointer ${selectedBank === bank.bank_id ? "border-[#1B4FBB] shadow-[0_0_30px_rgba(27,79,187,0.3)]" : ""}`}
+                      onClick={() => setSelectedBank(bank.bank_id)}
+                      glow
+                    >
+                      {/* Reserved badge slot — same height whether or not a badge is shown,
+                          so every card starts its content at the same vertical position. */}
+                      <div className="mb-4 h-7">
+                        {bank.is_top_recommendation && (
+                          <div className="inline-flex px-3 py-1 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#FF8F6B] text-xs font-medium text-white">
+                            Top Recommendation
+                          </div>
+                        )}
                       </div>
-
-                      <div className="flex-1 min-w-0 flex flex-col h-full">
-                        <div className="flex items-center justify-between mb-2 gap-2">
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-white text-lg truncate">{bank.bank}</h3>
-                            <p className="text-xs text-[#FF6B35] truncate">{bank.bestFor}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <div className="text-2xl font-bold text-[#10B981]">{bank.probability}%</div>
-                            <p className="text-xs text-muted-foreground">Match</p>
-                          </div>
+                      
+                      <div className="flex items-start gap-4 flex-1">
+                        {/* Bank Logo */}
+                        <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center text-2xl font-bold text-white shrink-0">
+                          {bank.bank_initial}
                         </div>
 
-                        {/* Key Metrics — same 4-column layout for every card */}
-                        <div className="grid grid-cols-4 gap-4 py-4 border-y border-white/10 my-4">
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">Interest</p>
-                            <p className="text-sm font-semibold text-white">{bank.rate}%</p>
+                        <div className="flex-1 min-w-0 flex flex-col h-full">
+                          <div className="flex items-center justify-between mb-2 gap-2">
+                            <div className="min-w-0">
+                              <h3 className="font-semibold text-white text-lg truncate">{bank.bank_name}</h3>
+                              <p className="text-xs text-[#FF6B35] truncate">{bank.usp_tagline}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-2xl font-bold text-[#10B981]">{bank.match_percent}%</div>
+                              <p className="text-xs text-muted-foreground">Match</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">Max Amount</p>
-                            <p className="text-sm font-semibold text-white">₹{(bank.maxAmount / 100000).toFixed(0)}L</p>
+
+                          {/* Key Metrics — same 4-column layout for every card */}
+                          <div className="grid grid-cols-4 gap-4 py-4 border-y border-white/10 my-4">
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">Interest</p>
+                              <p className="text-sm font-semibold text-white">
+                                {bank.interest_rate != null ? `${bank.interest_rate}%` : "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">Max Amount</p>
+                              <p className="text-sm font-semibold text-white">
+                                {bank.max_amount_display ??
+                                  (bank.max_amount != null ? formatINR(bank.max_amount) : "—")}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">Tenure</p>
+                              <p className="text-sm font-semibold text-white">
+                                {bank.tenure_months != null ? `${bank.tenure_months} mo` : "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">EMI</p>
+                              <p className="text-sm font-semibold text-white">
+                                {bank.monthly_emi != null ? `₹${Math.round(bank.monthly_emi).toLocaleString("en-IN")}` : "—"}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">Tenure</p>
-                            <p className="text-sm font-semibold text-white">{bank.tenure} mo</p>
+
+                          {/* BT-only: principal being transferred + fresh top-up */}
+                          {isBT && (bank.bt_principal_total != null || bank.fresh_loan_topup != null) && (
+                            <div className="grid grid-cols-2 gap-4 pb-4 -mt-2">
+                              {bank.bt_principal_total != null && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">BT Principal</p>
+                                  <p className="text-sm font-semibold text-white">{formatINR(bank.bt_principal_total)}</p>
+                                </div>
+                              )}
+                              {bank.fresh_loan_topup != null && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">Top-up Available</p>
+                                  <p className="text-sm font-semibold text-white">{formatINR(bank.fresh_loan_topup)}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Features — fixed 2-row wrap height so 3-feature and 2-feature
+                              cards still take up the same vertical space */}
+                          <div className="flex flex-wrap gap-2 mb-4 min-h-14 content-start">
+                            {bank.feature_tags.map((feature) => (
+                              <span
+                                key={feature}
+                                className="px-2 py-1 rounded-full bg-white/5 text-xs text-muted-foreground h-fit"
+                              >
+                                {feature}
+                              </span>
+                            ))}
                           </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">EMI</p>
-                            <p className="text-sm font-semibold text-white">₹{bank.emi.toLocaleString()}</p>
-                          </div>
+
+                          {/* Spacer pushes the button to the bottom of every card,
+                              regardless of how much content sits above it */}
+                          <div className="flex-1" />
+
+                          {/* Action */}
+                          <MagneticButton variant="primary" size="sm" className="w-full">
+                            Apply Now
+                            <ArrowRight className="w-4 h-4" />
+                          </MagneticButton>
                         </div>
-
-                        {/* Features — fixed 2-row wrap height so 3-feature and 2-feature
-                            cards still take up the same vertical space */}
-                        <div className="flex flex-wrap gap-2 mb-4 min-h-14 content-start">
-                          {bank.features.map((feature) => (
-                            <span
-                              key={feature}
-                              className="px-2 py-1 rounded-full bg-white/5 text-xs text-muted-foreground h-fit"
-                            >
-                              {feature}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Spacer pushes the button to the bottom of every card,
-                            regardless of how much content sits above it */}
-                        <div className="flex-1" />
-
-                        {/* Action */}
-                        <MagneticButton variant="primary" size="sm" className="w-full">
-                          Apply Now
-                          <ArrowRight className="w-4 h-4" />
-                        </MagneticButton>
                       </div>
-                    </div>
-                  </GlassCard>
-                </motion.div>
-              ))}
-            </div>
+                    </GlassCard>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </section>
 
-          {/* Credit Insights */}
+          {/* Application Insights */}
           <section className="mb-12">
-            <h2 className="text-2xl font-bold text-white mb-6">Credit Insights</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">Application Insights</h2>
             <div className="grid md:grid-cols-4 gap-4 items-stretch">
-              {creditInsights.map((insight, index) => (
-                <motion.div
-                  key={insight.label}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 + index * 0.1 }}
-                  className="h-full"
-                >
-                  <GlassCard className="p-4 h-full" glow>
-                    <p className="text-xs text-muted-foreground mb-2">{insight.label}</p>
-                    <p className="text-lg font-semibold" style={{ color: insight.color }}>
-                      {insight.value}
-                    </p>
-                  </GlassCard>
-                </motion.div>
-              ))}
+              <GlassCard className="p-4 h-full" glow>
+                <p className="text-xs text-muted-foreground mb-2">Case Type</p>
+                <p className="text-lg font-semibold text-white">
+                  {isBT ? "Balance Transfer" : "Fresh Loan"}
+                </p>
+              </GlassCard>
+              <GlassCard className="p-4 h-full" glow>
+                <p className="text-xs text-muted-foreground mb-2">Banks Evaluated</p>
+                <p className="text-lg font-semibold" style={{ color: "#6366F1" }}>
+                  {banksEvaluated}
+                </p>
+              </GlassCard>
+              <GlassCard className="p-4 h-full" glow>
+                <p className="text-xs text-muted-foreground mb-2">Eligible Banks</p>
+                <p className="text-lg font-semibold" style={{ color: "#10B981" }}>
+                  {eligibleCount}
+                </p>
+              </GlassCard>
+              <GlassCard className="p-4 h-full" glow>
+                <p className="text-xs text-muted-foreground mb-2">Avg. Interest Rate</p>
+                <p className="text-lg font-semibold" style={{ color: "#06B6D4" }}>
+                  {avgInterestRate != null ? `${avgInterestRate.toFixed(2)}%` : "—"}
+                </p>
+              </GlassCard>
             </div>
           </section>
+
+          {/* Balance Transfer derived details */}
+          {isBT && derived && Object.keys(derived).length > 0 && (
+            <section className="mb-12">
+              <h2 className="text-2xl font-bold text-white mb-6">Balance Transfer Summary</h2>
+              <GlassCard className="p-6" glow>
+                <div className="grid md:grid-cols-3 gap-6">
+                  {Object.entries(derived).map(([key, value]) => (
+                    <div key={key}>
+                      <p className="text-xs text-muted-foreground mb-1">{formatDerivedLabel(key)}</p>
+                      <p className="text-sm font-semibold text-white">{formatDerivedValue(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+            </section>
+          )}
 
           {/* AI Recommendations */}
           <section>
@@ -376,18 +503,33 @@ export default function ResultsPage() {
                   <h3 className="font-semibold text-white mb-2">AI-Generated Recommendations</h3>
 
                   <ul className="space-y-2 text-sm text-muted-foreground">
-                    <li className="flex items-start gap-2">
-                      <ChevronRight className="w-4 h-4 text-[#10B981] mt-0.5 flex-shrink-0" />
-                      <span>Your CIBIL score of 750+ qualifies you for premium rates. HDFC Bank offers the best rate at 10.5%.</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <ChevronRight className="w-4 h-4 text-[#10B981] mt-0.5 flex-shrink-0" />
-                      <span>Consider a 48-month tenure for optimal EMI-to-income ratio of 35%.</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <ChevronRight className="w-4 h-4 text-[#10B981] mt-0.5 flex-shrink-0" />
-                      <span>Your stable employment of 5+ years makes you eligible for express processing.</span>
-                    </li>
+                    {topRecommendation && (
+                      <li className="flex items-start gap-2">
+                        <ChevronRight className="w-4 h-4 text-[#10B981] mt-0.5 flex-shrink-0" />
+                        <span>
+                          {topRecommendation.bank_name} is your top match at a {topRecommendation.match_percent}%
+                          fit{topRecommendation.interest_rate != null ? `, offering ${topRecommendation.interest_rate}% interest` : ""}.
+                        </span>
+                      </li>
+                    )}
+                    {foirResult?.foir_percent != null && (
+                      <li className="flex items-start gap-2">
+                        <ChevronRight className="w-4 h-4 text-[#10B981] mt-0.5 flex-shrink-0" />
+                        <span>
+                          Your eligibility was assessed using a FOIR of {foirResult.foir_percent}%
+                          {foirResult.foir_source ? ` (${foirResult.foir_source})` : ""}.
+                        </span>
+                      </li>
+                    )}
+                    {eligibleCount === 0 && (
+                      <li className="flex items-start gap-2">
+                        <ChevronRight className="w-4 h-4 text-[#FF6B35] mt-0.5 flex-shrink-0" />
+                        <span>
+                          No banks currently match your profile — consider revisiting your requested amount or
+                          tenure and re-applying.
+                        </span>
+                      </li>
+                    )}
                   </ul>
 
                   <div className="mt-4 flex gap-2">

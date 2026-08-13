@@ -19,6 +19,7 @@ interface FloatingSelectProps {
   error?: string
   icon?: React.ReactNode
   className?: string
+  dropdownClassName?: string
   disabled?: boolean
 }
 
@@ -30,6 +31,7 @@ export function FloatingSelect({
   error,
   icon,
   className = "",
+  dropdownClassName = "",
   disabled = false,
 }: FloatingSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -135,7 +137,10 @@ export function FloatingSelect({
                   left: coords.left,
                   width: coords.width,
                 }}
-                className="z-[9999] max-h-64 overflow-y-auto bg-slate-900 rounded-xl shadow-2xl border border-white/10"
+                className={cn(
+  "z-[9999] max-h-64 overflow-y-auto bg-slate-900 rounded-xl shadow-2xl border border-white/10",
+  dropdownClassName
+)}
               >
                 {options.map((option) => (
                   <motion.button

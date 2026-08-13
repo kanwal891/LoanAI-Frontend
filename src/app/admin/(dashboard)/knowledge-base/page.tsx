@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { useDropzone } from "react-dropzone"
+import { useDropzone, type FileRejection } from "react-dropzone"
 import Link from "next/link"
 import {
   Upload,
@@ -54,6 +54,17 @@ const categories: { label: string; value: DocumentCategory }[] = [
   { label: "Case Study", value: "case_study" },
 ]
 
+// Accepted file types — PDF, Word (.doc/.docx), Excel (.xls/.xlsx), plain text.
+const ACCEPTED_FILE_TYPES = {
+  "application/pdf": [".pdf"],
+  "application/msword": [".doc"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+  "application/vnd.ms-excel": [".xls"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+  "text/plain": [".txt"],
+}
+const ACCEPTED_TYPES_LABEL = "PDF, DOC, DOCX, XLS, XLSX, and TXT"
+
 interface UploadedFile {
   id: string
   file: File
@@ -69,6 +80,65 @@ const STATUS_LABEL: Record<UploadedFile["status"], string> = {
   processing: "Processing",
   ready: "Ready",
   failed: "Failed",
+}
+
+// -----------------------------------------------------------------------
+// Toast — small bottom-of-screen notification for validation feedback.
+// Self-contained: no external toast library dependency. Uses the same
+// glass/aurora language as the rest of the app instead of a harsh red
+// "error" look — duplicates and unsupported files are common, expected
+// user actions, not alarming failures.
+// -----------------------------------------------------------------------
+interface ToastState {
+  id: number
+  message: string
+  variant: "warning" | "success"
+}
+
+const TOAST_STYLES: Record<ToastState["variant"], { icon: React.ReactNode; iconBg: string; iconColor: string }> = {
+  warning: {
+    icon: <AlertTriangle className="h-4 w-4" />,
+    iconBg: "bg-amber-500/15",
+    iconColor: "text-amber-400",
+  },
+  success: {
+    icon: <CheckCircle2 className="h-4 w-4" />,
+    iconBg: "bg-emerald-500/15",
+    iconColor: "text-emerald-400",
+  },
+}
+
+function ToastStack({ toasts, onDismiss }: { toasts: ToastState[]; onDismiss: (id: number) => void }) {
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none">
+      <AnimatePresence>
+        {toasts.map((toast) => {
+          const style = TOAST_STYLES[toast.variant]
+          return (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: 16, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.96 }}
+              transition={{ type: "spring", damping: 24, stiffness: 300 }}
+              className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0f1420]/95 backdrop-blur-xl px-4 py-3 shadow-[0_10px_40px_rgba(0,0,0,0.5)] max-w-md"
+            >
+              <span className={cn("flex h-7 w-7 items-center justify-center rounded-full shrink-0", style.iconBg, style.iconColor)}>
+                {style.icon}
+              </span>
+              <span className="text-sm text-white/90">{toast.message}</span>
+              <button
+                onClick={() => onDismiss(toast.id)}
+                className="ml-1 text-muted-foreground hover:text-white transition-colors shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 // -----------------------------------------------------------------------
@@ -152,6 +222,17 @@ export default function KnowledgeBasePage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // Toasts
+  const [toasts, setToasts] = useState<ToastState[]>([])
+  const showToast = useCallback((message: string, variant: ToastState["variant"] = "warning") => {
+    const id = Date.now() + Math.random()
+    setToasts((prev) => [...prev, { id, message, variant }])
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, 4000)
+  }, [])
+  const dismissToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id))
+
   // Documents list
   const [documents, setDocuments] = useState<KnowledgeDocumentRead[]>([])
   const [isLoadingDocs, setIsLoadingDocs] = useState(true)
@@ -192,19 +273,42 @@ export default function KnowledgeBasePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDocuments])
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map((file) => ({
-      id: Math.random().toString(36).substring(7),
-      file,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      status: "uploading" as const,
-      progress: 0,
-    }))
-    setFiles((prev) => [...prev, ...newFiles])
-    newFiles.forEach((file) => simulateUpload(file.id))
-  }, [])
+  // -----------------------------------------------------------------------
+  // Upload dropzone — validates file type (via `accept`) and rejects
+  // duplicate files (same name + size already queued).
+  // -----------------------------------------------------------------------
+  const onDrop = useCallback(
+    (acceptedFiles: File[], fileRejections: FileRejection[]) => {
+      if (fileRejections.length > 0) {
+        showToast(`Only ${ACCEPTED_TYPES_LABEL} files are supported.`, "warning")
+      }
+
+      const trulyNewFiles: File[] = []
+      for (const file of acceptedFiles) {
+        const isDuplicate = files.some((f) => f.name === file.name && f.size === file.size)
+        if (isDuplicate) {
+          showToast("This document is already uploaded.", "warning")
+          continue
+        }
+        trulyNewFiles.push(file)
+      }
+
+      if (trulyNewFiles.length === 0) return
+
+      const newFiles = trulyNewFiles.map((file) => ({
+        id: Math.random().toString(36).substring(7),
+        file,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        status: "uploading" as const,
+        progress: 0,
+      }))
+      setFiles((prev) => [...prev, ...newFiles])
+      newFiles.forEach((file) => simulateUpload(file.id))
+    },
+    [files, showToast]
+  )
 
   const simulateUpload = (fileId: string) => {
     let progress = 0
@@ -227,12 +331,7 @@ export default function KnowledgeBasePage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      "application/pdf": [".pdf"],
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "text/plain": [".txt"],
-    },
+    accept: ACCEPTED_FILE_TYPES,
   })
 
   const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id))
@@ -264,6 +363,19 @@ export default function KnowledgeBasePage() {
     if (!formData.bankId) return setSubmitError("Please select a bank.")
     if (!formData.category) return setSubmitError("Please select a document category.")
 
+    // Guard against uploading a document that's already in the list for
+    // this bank with the same filename — catches the "same file twice"
+    // case even across separate upload sessions, not just the current queue.
+    const alreadyExists = documents.some(
+      (d) =>
+        d.bank_id === Number(formData.bankId) &&
+        d.original_filename.toLowerCase() === selectedFile.name.toLowerCase()
+    )
+    if (alreadyExists) {
+      showToast("This document is already uploaded.", "warning")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       await uploadKnowledgeDocument({
@@ -287,6 +399,7 @@ export default function KnowledgeBasePage() {
         version: "1.0",
         description: "",
       })
+      showToast("Document uploaded successfully.", "success")
       loadDocuments()
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
@@ -298,8 +411,11 @@ export default function KnowledgeBasePage() {
   const handleExtract = async (doc: KnowledgeDocumentRead) => {
     setExtractingId(doc.id)
     try {
-      const updated = await runExtraction(doc.id)
-      setDocuments((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
+      await runExtraction(doc.id)
+      // Refetch the full list rather than just patching local state —
+      // guarantees the document appears in "AI Extraction Results" below
+      // with fully up-to-date data, not a partially-merged local copy.
+      await loadDocuments()
     } catch (err) {
       setDocsError(err instanceof Error ? err.message : "Extraction failed")
     } finally {
@@ -387,8 +503,8 @@ export default function KnowledgeBasePage() {
               </div>
               <div className="flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
                 <span className="rounded-full bg-white/10 px-3 py-1">PDF</span>
-                <span className="rounded-full bg-white/10 px-3 py-1">DOCX</span>
-                <span className="rounded-full bg-white/10 px-3 py-1">XLSX</span>
+                <span className="rounded-full bg-white/10 px-3 py-1">DOC / DOCX</span>
+                <span className="rounded-full bg-white/10 px-3 py-1">XLS / XLSX</span>
                 <span className="rounded-full bg-white/10 px-3 py-1">TXT</span>
               </div>
             </div>
@@ -754,8 +870,10 @@ export default function KnowledgeBasePage() {
         ) : (
           <div className="space-y-3">
             {hasResultsDocuments.map((doc) => (
-              <div
+              <motion.div
                 key={doc.id}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-start gap-3 min-w-0">
@@ -788,7 +906,7 @@ export default function KnowledgeBasePage() {
                     {doc.extraction_status === "reviewed" ? "View AI Results" : "Review AI Results"}
                   </Button>
                 </Link>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}
@@ -803,6 +921,8 @@ export default function KnowledgeBasePage() {
         onConfirm={confirmDelete}
         onCancel={closeDeleteDialog}
       />
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }
