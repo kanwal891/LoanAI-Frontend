@@ -1,453 +1,508 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { ChevronDown, Plus, X, Loader2, Save, CheckCircle2 } from "lucide-react"
+import React, { useState, useEffect } from "react"
+import {
+  AlertTriangle,
+  FileText,
+  Percent,
+  Landmark,
+  Tag,
+  Check,
+  X,
+  Edit3,
+  Save,
+  ChevronDown,
+  ChevronRight,
+  ShieldAlert,
+  Code2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
-// -----------------------------------------------------------------------
-// Friendly section titles for the known top-level keys the extraction
-// service produces. Anything not in this map still renders (as a
-// human-cased fallback title), so new fields never disappear.
-// -----------------------------------------------------------------------
-const SECTION_TITLES: Record<string, string> = {
-  comparison: "Comparison Summary",
-  eligibility: "Eligibility",
-  foir: "FOIR Rules",
-  loan_limits: "Loan Limits",
-  tenure: "Tenure",
-  pricing: "Pricing",
-  ltv: "LTV",
-  documents_required: "Documents Required",
-  exclusions: "Exclusions",
-  notes: "Notes",
-  sources: "Sources",
-  detected_products: "Detected Products",
-}
-
-function humanize(key: string) {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-function isPlainObject(value: any): value is Record<string, any> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-}
-
-// Shared height for every input-like box (single fields, min/max halves,
-// tag "add item" inputs) so rows line up regardless of label length or
-// whether a field is a single input or a combined min/max pair.
-const FIELD_HEIGHT = "h-10"
-
-// -----------------------------------------------------------------------
-// A single primitive field — string / number / null editable as text.
-// Empty string is saved back as null so we don't invent values.
-// -----------------------------------------------------------------------
-function PrimitiveField({
-  label,
-  value,
-  onChange,
-  readOnly,
-}: {
-  label: string
-  value: string | number | null
-  onChange: (value: string | number | null) => void
-  readOnly?: boolean
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground block leading-4">{label}</Label>
-      <Input
-        value={value === null || value === undefined ? "" : String(value)}
-        onChange={(e) => {
-          const raw = e.target.value
-          if (raw === "") return onChange(null)
-          const asNum = Number(raw)
-          onChange(!isNaN(asNum) && raw.trim() !== "" && /^-?\d*\.?\d+$/.test(raw) ? asNum : raw)
-        }}
-        readOnly={readOnly}
-        placeholder="Not extracted"
-        className={cn(FIELD_HEIGHT, "border-white/10 bg-white/5 text-sm placeholder:text-muted-foreground/40")}
-      />
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------
-// A combined Min/Max row for paired fields (age_min+age_max,
-// cibil_min+cibil_max, etc.) — one label, two small inputs side by side,
-// instead of two disconnected boxes.
-// -----------------------------------------------------------------------
-function MinMaxField({
-  label,
-  minValue,
-  maxValue,
-  onChangeMin,
-  onChangeMax,
-  readOnly,
-}: {
-  label: string
-  minValue: string | number | null
-  maxValue: string | number | null
-  onChangeMin: (value: string | number | null) => void
-  onChangeMax: (value: string | number | null) => void
-  readOnly?: boolean
-}) {
-  const parse = (raw: string): string | number | null => {
-    if (raw === "") return null
-    const asNum = Number(raw)
-    return !isNaN(asNum) && /^-?\d*\.?\d+$/.test(raw) ? asNum : raw
-  }
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <div className="flex items-center gap-2">
-        <Input
-          value={minValue === null || minValue === undefined ? "" : String(minValue)}
-          onChange={(e) => onChangeMin(parse(e.target.value))}
-          readOnly={readOnly}
-          placeholder="Min"
-          className="border-white/10 bg-white/5 text-sm h-9 placeholder:text-muted-foreground/40"
-        />
-        <span className="text-muted-foreground text-xs shrink-0">to</span>
-        <Input
-          value={maxValue === null || maxValue === undefined ? "" : String(maxValue)}
-          onChange={(e) => onChangeMax(parse(e.target.value))}
-          readOnly={readOnly}
-          placeholder="Max"
-          className="border-white/10 bg-white/5 text-sm h-9 placeholder:text-muted-foreground/40"
-        />
-      </div>
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------
-// A nested object (eligibility, foir, pricing, etc.) rendered as a
-// collapsible card of primitive fields. Fields sharing a `_min`/`_max`
-// suffix pair (e.g. age_min + age_max) collapse into one combined row.
-// -----------------------------------------------------------------------
-function ObjectSection({
-  title,
-  data,
-  onChange,
-  readOnly,
-  defaultOpen = true,
-}: {
-  title: string
-  data: Record<string, any>
-  onChange: (data: Record<string, any>) => void
-  readOnly?: boolean
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  const keys = Object.keys(data)
-
-  if (keys.length === 0) return null
-
-  // Detect base_min / base_max pairs so they render as one combined row
-  // instead of two separate boxes.
-  const pairedBases = new Set<string>()
-  const consumedKeys = new Set<string>()
-  for (const key of keys) {
-    if (key.endsWith("_min")) {
-      const base = key.slice(0, -4)
-      const maxKey = `${base}_max`
-      if (keys.includes(maxKey)) {
-        pairedBases.add(base)
-        consumedKeys.add(key)
-        consumedKeys.add(maxKey)
-      }
-    }
-  }
-
-  const remainingEntries = Object.entries(data).filter(([key]) => !consumedKeys.has(key))
-
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors"
-      >
-        <span className="text-sm font-medium text-white">{title}</span>
-        <ChevronDown
-          className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")}
-        />
-      </button>
-      {open && (
-        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
-          {Array.from(pairedBases).map((base) => (
-            <MinMaxField
-              key={base}
-              label={humanize(base)}
-              minValue={data[`${base}_min`]}
-              maxValue={data[`${base}_max`]}
-              onChangeMin={(v) => onChange({ ...data, [`${base}_min`]: v })}
-              onChangeMax={(v) => onChange({ ...data, [`${base}_max`]: v })}
-              readOnly={readOnly}
-            />
-          ))}
-          {remainingEntries.map(([key, value]) => {
-            if (isPlainObject(value)) {
-              // rare nested-nested case — fall back to a compact JSON display, not editable
-              return (
-                <div key={key} className="sm:col-span-2 lg:col-span-3 space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">{humanize(key)}</Label>
-                  <pre className="text-xs text-muted-foreground bg-black/20 rounded-lg p-3 overflow-x-auto">
-                    {JSON.stringify(value, null, 2)}
-                  </pre>
-                </div>
-              )
-            }
-            if (Array.isArray(value)) {
-              return (
-                <div key={key} className="sm:col-span-2 lg:col-span-3">
-                  <TagListField
-                    label={humanize(key)}
-                    items={value.map(String)}
-                    onChange={(items) => onChange({ ...data, [key]: items })}
-                    readOnly={readOnly}
-                  />
-                </div>
-              )
-            }
-            return (
-              <PrimitiveField
-                key={key}
-                label={humanize(key)}
-                value={value}
-                onChange={(v) => onChange({ ...data, [key]: v })}
-                readOnly={readOnly}
-              />
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------
-// Array of strings (documents_required, exclusions, detected_products)
-// rendered as removable tags with an add-new input.
-// -----------------------------------------------------------------------
-function TagListField({
-  label,
-  items,
-  onChange,
-  readOnly,
-}: {
-  label: string
-  items: string[]
-  onChange: (items: string[]) => void
-  readOnly?: boolean
-}) {
-  const [draft, setDraft] = useState("")
-
-  const addItem = () => {
-    const trimmed = draft.trim()
-    if (!trimmed) return
-    onChange([...items, trimmed])
-    setDraft("")
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <div className="flex flex-wrap gap-2">
-        {items.length === 0 && (
-          <span className="text-xs text-muted-foreground/60 italic">None listed</span>
-        )}
-        {items.map((item, idx) => (
-          <span
-            key={idx}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs text-white"
-          >
-            {item}
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={() => onChange(items.filter((_, i) => i !== idx))}
-                className="text-muted-foreground hover:text-red-400 transition-colors"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </span>
-        ))}
-      </div>
-      {!readOnly && (
-        <div className="flex gap-2 mt-2">
-          <Input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                addItem()
-              }
-            }}
-            placeholder="Add item..."
-            className="border-white/10 bg-white/5 text-sm h-8"
-          />
-          <Button type="button" size="sm" variant="outline" className="border-white/10 bg-white/5 px-2" onClick={addItem}>
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------
-// Sources — array of {section, excerpt} shown as small read-only citations
-// -----------------------------------------------------------------------
-function SourcesList({ sources }: { sources: any[] }) {
-  if (!Array.isArray(sources) || sources.length === 0) return null
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <p className="text-sm font-medium text-white mb-3">Sources</p>
-      <div className="space-y-2">
-        {sources.map((src, idx) => (
-          <div key={idx} className="text-xs rounded-lg bg-black/20 p-3">
-            {src.section && (
-              <p className="text-muted-foreground font-medium mb-1">{src.section}</p>
-            )}
-            {src.excerpt && <p className="text-muted-foreground/80 italic">"{src.excerpt}"</p>}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------
-// Main editor
-// -----------------------------------------------------------------------
 interface PolicyDataEditorProps {
   data: Record<string, any>
   readOnly?: boolean
-  onSave: (data: Record<string, any>) => Promise<void>
+  onSave?: (updatedData: Record<string, any>) => void
 }
 
-// Sections rendered specially / at the top, in this order.
-// Everything else in `data` still renders, just below these.
-const PRIORITY_SECTIONS = ["comparison", "eligibility", "foir", "pricing", "ltv", "loan_limits", "tenure"]
-const TAG_LIST_KEYS = ["documents_required", "exclusions", "detected_products"]
+interface ReviewItem {
+  id: string
+  sourcePhrase: string
+  targetField: string
+  suggestedInterpretation: string
+  status: "pending" | "accepted" | "rejected"
+}
 
-export function PolicyDataEditor({ data, readOnly, onSave }: PolicyDataEditorProps) {
-  const [local, setLocal] = useState<Record<string, any>>(data)
-  const [isSaving, setIsSaving] = useState(false)
-  const [savedFlash, setSavedFlash] = useState(false)
+type SectionKey =
+  | "review"
+  | "eligibility"
+  | "foir"
+  | "limits"
+  | "pricing"
+  | "special"
+  | "raw_json"
+
+export function PolicyDataEditor({
+  data,
+  readOnly = false,
+  onSave,
+}: PolicyDataEditorProps) {
+  const [formData, setFormData] = useState<Record<string, any>>(data || {})
+  
+  // Section Visibility State (Default: 'review' is open, others closed)
+  const [activeSection, setActiveSection] = useState<SectionKey>("review")
+
+  // Inline editing state for Ambiguous Phrases
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null)
+  const [editText, setEditText] = useState<string>("")
+
+  // Raw JSON state
+  const [jsonText, setJsonText] = useState<string>(
+    JSON.stringify(data || {}, null, 2)
+  )
+  const [jsonError, setJsonError] = useState<string | null>(null)
 
   useEffect(() => {
-    setLocal(data)
+    setFormData(data || {})
+    setJsonText(JSON.stringify(data || {}, null, 2))
   }, [data])
 
-  const updateSection = (key: string, value: any) => {
-    setLocal((prev) => ({ ...prev, [key]: value }))
+  // Mock ambiguous phrases queue (Syncs with state)
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([
+    {
+      id: "rev-1",
+      sourcePhrase: "Agar koi listed nhi hai toh nhi krege",
+      targetField: "Ineligible Profiles",
+      suggestedInterpretation: "Unlisted employer companies are not eligible.",
+      status: "pending",
+    },
+    {
+      id: "rev-2",
+      sourcePhrase: "ABB calculation 3-7-12-30/31",
+      targetField: "Eligibility Rules",
+      suggestedInterpretation: "Average Bank Balance (ABB) calculated on dates 3, 7, 12, and 30/31.",
+      status: "pending",
+    },
+  ])
+
+  // Field change handler
+  const handleFieldChange = (key: string, value: any) => {
+    const updated = { ...formData, [key]: value }
+    setFormData(updated)
+    setJsonText(JSON.stringify(updated, null, 2))
+    if (onSave) onSave(updated)
   }
 
-  const handleSave = async () => {
-    setIsSaving(true)
+  // Handle Raw JSON edit
+  const handleJsonChange = (val: string) => {
+    setJsonText(val)
     try {
-      await onSave(local)
-      setSavedFlash(true)
-      setTimeout(() => setSavedFlash(false), 2000)
-    } finally {
-      setIsSaving(false)
+      const parsed = JSON.parse(val)
+      setFormData(parsed)
+      setJsonError(null)
+      if (onSave) onSave(parsed)
+    } catch {
+      setJsonError("Invalid JSON syntax")
     }
   }
 
-  const knownKeys = new Set([...PRIORITY_SECTIONS, ...TAG_LIST_KEYS, "notes", "sources", "document_type"])
-  const otherKeys = Object.keys(local).filter((k) => !knownKeys.has(k))
+  const toggleSection = (section: SectionKey) => {
+    setActiveSection(section)
+  }
+
+  // Review Handlers
+  const startEditingReview = (item: ReviewItem) => {
+    setEditingReviewId(item.id)
+    setEditText(item.suggestedInterpretation)
+  }
+
+  const saveReviewEdit = (id: string) => {
+    setReviewItems((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, suggestedInterpretation: editText } : item
+      )
+    )
+    setEditingReviewId(null)
+    if (onSave) onSave(formData)
+  }
+
+  const handleReviewAction = (id: string, action: "accepted" | "rejected") => {
+    setReviewItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, status: action } : item))
+    )
+    if (onSave) onSave(formData)
+  }
+
+  const sectionsList: { key: SectionKey; label: string; icon: any; badge?: number }[] = [
+    {
+      key: "review",
+      label: "Review Queue",
+      icon: AlertTriangle,
+      badge: reviewItems.filter((i) => i.status === "pending").length,
+    },
+    { key: "eligibility", label: "Eligibility Rules", icon: FileText },
+    { key: "foir", label: "FOIR & Obligations", icon: Percent },
+    { key: "limits", label: "Loan Limits & LTV", icon: Landmark },
+    { key: "pricing", label: "Pricing & ROI", icon: Tag },
+    { key: "special", label: "Special Conditions", icon: ShieldAlert },
+    { key: "raw_json", label: "Raw JSON Editor", icon: Code2 },
+  ]
 
   return (
-    <div className="space-y-4">
-      {TAG_LIST_KEYS.filter((k) => Array.isArray(local[k])).length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
-          {TAG_LIST_KEYS.map((key) =>
-            Array.isArray(local[key]) ? (
-              <TagListField
-                key={key}
-                label={SECTION_TITLES[key] ?? humanize(key)}
-                items={local[key]}
-                onChange={(items) => updateSection(key, items)}
-                readOnly={readOnly}
+    <div className="w-full space-y-6 text-slate-100">
+      
+      {/* SECTION TABS / NAVIGATION HEADER */}
+      <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-white/10">
+        {sectionsList.map((sec) => {
+          const Icon = sec.icon
+          const isActive = activeSection === sec.key
+          return (
+            <button
+              key={sec.key}
+              onClick={() => toggleSection(sec.key)}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all",
+                isActive
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                  : "bg-white/5 text-slate-400 border border-transparent hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              <span>{sec.label}</span>
+              {sec.badge !== undefined && sec.badge > 0 && (
+                <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.2 rounded-full border border-amber-500/30">
+                  {sec.badge}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ACTIVE SECTION CONTENT CONTAINER */}
+      <div className="bg-slate-900/60 rounded-xl border border-white/10 p-5 space-y-4">
+
+        {/* 1. REVIEW QUEUE SECTION */}
+        {activeSection === "review" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400" /> Ambiguous Phrases Needing Review
+              </h3>
+              <span className="text-xs text-slate-400">
+                {reviewItems.filter((i) => i.status === "pending").length} items remaining
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {reviewItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "p-4 rounded-xl border bg-slate-950/80 space-y-3 transition-all",
+                    item.status === "pending" && "border-amber-500/40 border-l-4 border-l-amber-400",
+                    item.status === "accepted" && "border-emerald-500/30 border-l-4 border-l-emerald-500 opacity-80",
+                    item.status === "rejected" && "border-white/10 opacity-40"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded text-xs font-mono text-amber-300">
+                      Source Phrase: &ldquo;{item.sourcePhrase}&rdquo;
+                    </span>
+                    <span className="text-xs text-slate-400">Target Field: <strong>{item.targetField}</strong></span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-400">AI Suggested Interpretation:</Label>
+                    {editingReviewId === item.id && !readOnly ? (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Input
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          className="bg-slate-900 border-slate-700 text-xs h-9"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => saveReviewEdit(item.id)}
+                          className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs h-9 shrink-0 font-medium"
+                        >
+                          <Save className="w-3.5 h-3.5 mr-1" /> Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingReviewId(null)}
+                          className="text-xs h-9"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-100 bg-slate-900/90 p-3 rounded-lg border border-white/5 leading-relaxed">
+                        {item.suggestedInterpretation}
+                      </p>
+                    )}
+                  </div>
+
+                  {!readOnly && item.status === "pending" && editingReviewId !== item.id && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        onClick={() => handleReviewAction(item.id, "accepted")}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-7 px-3"
+                      >
+                        <Check className="w-3 h-3 mr-1" /> Accept Interpretation
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startEditingReview(item)}
+                        className="border-slate-700 bg-slate-800 text-xs h-7 px-3"
+                      >
+                        <Edit3 className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleReviewAction(item.id, "rejected")}
+                        className="text-rose-400 hover:bg-rose-500/10 text-xs h-7 px-2.5"
+                      >
+                        <X className="w-3 h-3 mr-1" /> Reject
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 2. ELIGIBILITY RULES */}
+        {activeSection === "eligibility" && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-400" /> Complete Eligibility Parameters
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label className="text-xs text-slate-400">Min Monthly Income (₹)</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.min_salary || ""}
+                  onChange={(e) => handleFieldChange("min_salary", e.target.value)}
+                  placeholder="e.g. 30000"
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-slate-400">Min CIBIL Score</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.min_cibil || ""}
+                  onChange={(e) => handleFieldChange("min_cibil", e.target.value)}
+                  placeholder="e.g. 700"
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-slate-400">Age Eligibility (Min / Max)</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.age_limit || ""}
+                  onChange={(e) => handleFieldChange("age_limit", e.target.value)}
+                  placeholder="e.g. 21 to 60 years"
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs text-slate-400">Allowed Employer Categories</Label>
+              <Input
+                disabled={readOnly}
+                value={formData.allowed_employers || ""}
+                onChange={(e) => handleFieldChange("allowed_employers", e.target.value)}
+                placeholder="e.g. CAT A, CAT B, Govt, Public Sector MNCs"
+                className="bg-slate-950 border-slate-800 text-xs mt-1"
               />
-            ) : null
-          )}
+            </div>
+
+            <div>
+              <Label className="text-xs text-slate-400">Ineligible Profiles / Restrictions</Label>
+              <Textarea
+                disabled={readOnly}
+                value={formData.ineligible_profiles || ""}
+                onChange={(e) => handleFieldChange("ineligible_profiles", e.target.value)}
+                placeholder="e.g. Unlisted Companies, Proprietorships, Defense"
+                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[90px]"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 3. FOIR & OBLIGATIONS */}
+        {activeSection === "foir" && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Percent className="w-4 h-4 text-emerald-400" /> Fixed Obligation to Income Ratio (FOIR)
+            </h3>
+
+            <div>
+              <Label className="text-xs text-slate-400">Income Slab Matrix & FOIR %</Label>
+              <Textarea
+                disabled={readOnly}
+                value={formData.foir_rules || ""}
+                onChange={(e) => handleFieldChange("foir_rules", e.target.value)}
+                placeholder="e.g. Income < 30k = 50% FOIR; 30k-50k = 60% FOIR; > 50k = 65% FOIR"
+                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[100px]"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs text-slate-400">Obligation Deduction Rules</Label>
+              <Textarea
+                disabled={readOnly}
+                value={formData.obligation_rules || ""}
+                onChange={(e) => handleFieldChange("obligation_rules", e.target.value)}
+                placeholder="e.g. Existing EMIs > 6 months left, Credit Card 5% of limit, FOIR includes rent"
+                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[80px]"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 4. LOAN LIMITS & LTV */}
+        {activeSection === "limits" && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Landmark className="w-4 h-4 text-emerald-400" /> Loan Amounts, Tenure & LTV Limits
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label className="text-xs text-slate-400">Min Loan Amount (₹)</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.min_loan_amount || ""}
+                  onChange={(e) => handleFieldChange("min_loan_amount", e.target.value)}
+                  placeholder="e.g. 100000"
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-slate-400">Max Loan Amount (₹)</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.max_loan_amount || ""}
+                  onChange={(e) => handleFieldChange("max_loan_amount", e.target.value)}
+                  placeholder="e.g. 4000000"
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-slate-400">Max Tenure (Months)</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.max_tenure || ""}
+                  onChange={(e) => handleFieldChange("max_tenure", e.target.value)}
+                  placeholder="e.g. 60 Months"
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 5. PRICING & ROI */}
+        {activeSection === "pricing" && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Tag className="w-4 h-4 text-emerald-400" /> Interest Rates & Processing Fees
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs text-slate-400">Rate of Interest (ROI %)</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.roi || ""}
+                  onChange={(e) => handleFieldChange("roi", e.target.value)}
+                  placeholder="e.g. 10.5% - 14.0% p.a."
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-slate-400">Processing Fee</Label>
+                <Input
+                  disabled={readOnly}
+                  value={formData.processing_fee || ""}
+                  onChange={(e) => handleFieldChange("processing_fee", e.target.value)}
+                  placeholder="e.g. 1% to 2% + GST"
+                  className="bg-slate-950 border-slate-800 text-xs mt-1"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 6. SPECIAL CONDITIONS */}
+        {activeSection === "special" && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-emerald-400" /> Special Conditions & Calculations
+            </h3>
+
+            <div>
+              <Label className="text-xs text-slate-400">Special Notes & Banking Rules</Label>
+              <Textarea
+                disabled={readOnly}
+                value={formData.special_conditions || ""}
+                onChange={(e) => handleFieldChange("special_conditions", e.target.value)}
+                placeholder="e.g. Average Bank Balance (ABB) evaluated on 3rd, 7th, 12th, and 30th of month."
+                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[100px]"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 7. RAW JSON EDITOR */}
+        {activeSection === "raw_json" && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Code2 className="w-4 h-4 text-emerald-400" /> Complete Extracted JSON Tree
+              </h3>
+              {jsonError && <span className="text-xs text-rose-400 font-medium">{jsonError}</span>}
+            </div>
+
+            <Textarea
+              disabled={readOnly}
+              value={jsonText}
+              onChange={(e) => handleJsonChange(e.target.value)}
+              className="font-mono text-xs bg-slate-950 border-slate-800 text-emerald-400 min-h-[300px] leading-relaxed"
+            />
+          </div>
+        )}
+
+      </div>
+
+      {/* FOOTER: Source Evidence Reference */}
+      <div className="bg-slate-900/90 p-4 rounded-xl border border-white/10 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Source Evidence Excerpt</span>
+          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+            Page 3
+          </span>
         </div>
-      )}
+        <blockquote className="text-xs text-slate-300 italic bg-slate-950 p-3 rounded-lg border border-white/5 leading-relaxed border-l-2 border-l-emerald-400">
+          &ldquo;IF salary is less than 30k, FOIR = 50%. Salary between 30k to 50k, FOIR = 60%. Unlisted companies are not eligible.&rdquo;
+        </blockquote>
+      </div>
 
-      {PRIORITY_SECTIONS.filter((k) => isPlainObject(local[k])).map((key) => (
-        <ObjectSection
-          key={key}
-          title={SECTION_TITLES[key] ?? humanize(key)}
-          data={local[key]}
-          onChange={(value) => updateSection(key, value)}
-          readOnly={readOnly}
-          defaultOpen={key === "comparison" || key === "eligibility"}
-        />
-      ))}
-
-      {otherKeys
-        .filter((k) => isPlainObject(local[k]))
-        .map((key) => (
-          <ObjectSection
-            key={key}
-            title={SECTION_TITLES[key] ?? humanize(key)}
-            data={local[key]}
-            onChange={(value) => updateSection(key, value)}
-            readOnly={readOnly}
-            defaultOpen={false}
-          />
-        ))}
-
-      {typeof local.notes === "string" && (
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Notes</Label>
-          <Textarea
-            value={local.notes}
-            onChange={(e) => updateSection("notes", e.target.value)}
-            readOnly={readOnly}
-            className="border-white/10 bg-white/5 text-sm min-h-20"
-          />
-        </div>
-      )}
-
-      <SourcesList sources={local.sources} />
-
-      {!readOnly && (
-        <div className="flex items-center gap-3 pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="border-white/10 bg-white/5"
-            onClick={handleSave}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-3.5 w-3.5" />
-            )}
-            Save changes
-          </Button>
-          {savedFlash && (
-            <span className="text-xs text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Saved
-            </span>
-          )}
-        </div>
-      )}
     </div>
   )
 }

@@ -189,6 +189,9 @@ export interface FreshLoanBankResult {
 export interface FreshLoanResponse {
   case_type: CaseType
   banks_evaluated: number
+  // Present once /eligibility/applications persists the form (loan_applications.id).
+  // null/omitted for the low-level /eligibility/fresh-loan calc, which doesn't save.
+  application_id?: number | null
   recommendations: BankRecommendation[]
   results: FreshLoanBankResult[]
 }
@@ -220,9 +223,45 @@ export interface BalanceTransferBankResult {
 export interface BalanceTransferResponse {
   case_type: CaseType
   banks_evaluated: number
+  // Present once /eligibility/applications (or /eligibility/balance-transfer) persists the form.
+  application_id?: number | null
   derived: Record<string, any>
   recommendations: BankRecommendation[]
   results: BalanceTransferBankResult[]
+}
+
+// -----------------------------------------------------------------------
+// Saved applications — GET /eligibility/applications, GET /eligibility/applications/{id}
+// -----------------------------------------------------------------------
+
+/** Row shape for GET /eligibility/applications (list view). */
+export interface SavedApplicationSummary {
+  id: number
+  case_type: string // "fresh_loan" | "balance_transfer" (stored as plain string on the backend)
+  status: string
+  applicant_name?: string | null
+  banks_evaluated: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+/** Full reload shape for GET /eligibility/applications/{id}. */
+export interface SavedApplicationDetail {
+  id: number
+  user_id: number
+  case_type: string // "fresh_loan" | "balance_transfer"
+  status: string
+  applicant_name?: string | null
+  banks_evaluated: number
+  // Raw stored JSON — shaped like LoanApplicationRequest, but not re-validated on reload.
+  payload: Record<string, any>
+  derived: Record<string, any>
+  // Backend types these as list[Any]; in practice they're the same
+  // BankRecommendation / *BankResult shapes as the live calc response.
+  recommendations: BankRecommendation[]
+  results: Array<FreshLoanBankResult | BalanceTransferBankResult>
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 // -----------------------------------------------------------------------
@@ -278,6 +317,26 @@ export function freshLoanEligibility(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })
+}
+
+/**
+ * List saved applications (own applications for a regular user; all
+ * applications for an admin — the backend scopes this by role).
+ *
+ * GET /eligibility/applications
+ */
+export function listApplications(): Promise<SavedApplicationSummary[]> {
+  return apiFetch<SavedApplicationSummary[]>("/eligibility/applications")
+}
+
+/**
+ * Reload a saved application's original form payload plus its AI
+ * recommendations/results snapshot.
+ *
+ * GET /eligibility/applications/{id}
+ */
+export function getApplication(id: number): Promise<SavedApplicationDetail> {
+  return apiFetch<SavedApplicationDetail>(`/eligibility/applications/${id}`)
 }
 
 // -----------------------------------------------------------------------

@@ -206,11 +206,16 @@ export default function ResultsPage() {
               <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 text-balance">
                 Your AI Loan <span className="gradient-text-primary">Recommendations</span>
               </h1>
-              <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
+              <p className="text-muted-foreground max-w-2xl mx-auto mb-2">
                 {eligibleCount > 0
                   ? `Based on your profile, here are your personalized loan options ranked by approval probability`
                   : `Based on your profile, no banks currently match your eligibility criteria`}
               </p>
+              {result?.application_id != null && (
+                <p className="text-xs text-muted-foreground mb-8">
+                  Application #{result.application_id} saved
+                </p>
+              )}
 
               {/* Main Score Card — equal-width, equal-height, same internal alignment */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto items-stretch">

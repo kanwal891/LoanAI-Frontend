@@ -89,6 +89,9 @@ export default function ApplyPage() {
         "eligibilityResultKind",
         isBalanceTransferResponse(result) ? "balance_transfer" : "fresh_loan"
       )
+      if (result.application_id != null) {
+        sessionStorage.setItem("eligibilityApplicationId", String(result.application_id))
+      }
       router.push("/results")
     } catch (err) {
       if (err instanceof ApiError) {
