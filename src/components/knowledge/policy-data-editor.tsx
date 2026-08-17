@@ -7,14 +7,12 @@ import {
   Percent,
   Landmark,
   Tag,
-  Check,
-  X,
-  Edit3,
-  Save,
-  ChevronDown,
-  ChevronRight,
+  Plus,
+  Trash2,
   ShieldAlert,
-  Code2,
+  BookOpen,
+  Info,
+  ListPlus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,22 +26,29 @@ interface PolicyDataEditorProps {
   onSave?: (updatedData: Record<string, any>) => void
 }
 
-interface ReviewItem {
-  id: string
-  sourcePhrase: string
-  targetField: string
-  suggestedInterpretation: string
-  status: "pending" | "accepted" | "rejected"
-}
-
 type SectionKey =
   | "review"
   | "eligibility"
   | "foir"
   | "limits"
   | "pricing"
-  | "special"
-  | "raw_json"
+  | "exclusions"
+  | "sources"
+  | "extra"
+
+const isArr = (v: any) => Array.isArray(v)
+const isObj = (v: any) => v && typeof v === "object" && !Array.isArray(v)
+const isScalar = (v: any) => !isArr(v) && !isObj(v)
+const arr = (v: any): any[] => (isArr(v) ? v : [])
+const str = (v: any): string => (v === null || v === undefined ? "" : String(v))
+const obj = (v: any): Record<string, any> => (isObj(v) ? v : {})
+const hasValue = (v: any): boolean => v !== null && v !== undefined && String(v).trim() !== ""
+
+/** "max_foir_percent" -> "Max Foir Percent" */
+const prettyLabel = (key: string) =>
+  key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 
 export function PolicyDataEditor({
   data,
@@ -51,110 +56,93 @@ export function PolicyDataEditor({
   onSave,
 }: PolicyDataEditorProps) {
   const [formData, setFormData] = useState<Record<string, any>>(data || {})
-  
-  // Section Visibility State (Default: 'review' is open, others closed)
   const [activeSection, setActiveSection] = useState<SectionKey>("review")
-
-  // Inline editing state for Ambiguous Phrases
-  const [editingReviewId, setEditingReviewId] = useState<string | null>(null)
-  const [editText, setEditText] = useState<string>("")
-
-  // Raw JSON state
-  const [jsonText, setJsonText] = useState<string>(
-    JSON.stringify(data || {}, null, 2)
-  )
-  const [jsonError, setJsonError] = useState<string | null>(null)
 
   useEffect(() => {
     setFormData(data || {})
-    setJsonText(JSON.stringify(data || {}, null, 2))
   }, [data])
 
-  // Mock ambiguous phrases queue (Syncs with state)
-  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([
-    {
-      id: "rev-1",
-      sourcePhrase: "Agar koi listed nhi hai toh nhi krege",
-      targetField: "Ineligible Profiles",
-      suggestedInterpretation: "Unlisted employer companies are not eligible.",
-      status: "pending",
-    },
-    {
-      id: "rev-2",
-      sourcePhrase: "ABB calculation 3-7-12-30/31",
-      targetField: "Eligibility Rules",
-      suggestedInterpretation: "Average Bank Balance (ABB) calculated on dates 3, 7, 12, and 30/31.",
-      status: "pending",
-    },
-  ])
-
-  // Field change handler
-  const handleFieldChange = (key: string, value: any) => {
-    const updated = { ...formData, [key]: value }
+  const commit = (updated: Record<string, any>) => {
     setFormData(updated)
-    setJsonText(JSON.stringify(updated, null, 2))
     if (onSave) onSave(updated)
   }
 
-  // Handle Raw JSON edit
-  const handleJsonChange = (val: string) => {
-    setJsonText(val)
-    try {
-      const parsed = JSON.parse(val)
-      setFormData(parsed)
-      setJsonError(null)
-      if (onSave) onSave(parsed)
-    } catch {
-      setJsonError("Invalid JSON syntax")
+  const setPath = (path: string, value: any) => {
+    const parts = path.split(".")
+    const updated = { ...formData }
+    let cursor: any = updated
+    for (let i = 0; i < parts.length - 1; i++) {
+      const key = parts[i]
+      cursor[key] = { ...(cursor[key] ?? {}) }
+      cursor = cursor[key]
     }
+    cursor[parts[parts.length - 1]] = value
+    commit(updated)
   }
 
-  const toggleSection = (section: SectionKey) => {
-    setActiveSection(section)
-  }
+  const setArrayPath = (path: string, newArr: any[]) => setPath(path, newArr)
 
-  // Review Handlers
-  const startEditingReview = (item: ReviewItem) => {
-    setEditingReviewId(item.id)
-    setEditText(item.suggestedInterpretation)
+  const updateStringArrayItem = (path: string, index: number, value: string) => {
+    const current = arr(
+      path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), formData as any)
+    ).slice()
+    current[index] = value
+    setArrayPath(path, current)
   }
-
-  const saveReviewEdit = (id: string) => {
-    setReviewItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, suggestedInterpretation: editText } : item
-      )
+  const removeStringArrayItem = (path: string, index: number) => {
+    const current = arr(
+      path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), formData as any)
     )
-    setEditingReviewId(null)
-    if (onSave) onSave(formData)
+    setArrayPath(path, current.filter((_, i) => i !== index))
+  }
+  const addStringArrayItem = (path: string) => {
+    const current = arr(
+      path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), formData as any)
+    )
+    setArrayPath(path, [...current, ""])
   }
 
-  const handleReviewAction = (id: string, action: "accepted" | "rejected") => {
-    setReviewItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, status: action } : item))
-    )
-    if (onSave) onSave(formData)
-  }
+  // -------------------------------------------------------------------
+  const validation = obj(formData._validation)
+  const flags: string[] = arr(validation.flags)
+  const needsReview = Boolean(validation.needs_review) || flags.length > 0
+
+  const eligibility = obj(formData.eligibility)
+  const foir = obj(formData.foir)
+  const ltv = obj(formData.ltv)
+  const tenure = obj(formData.tenure)
+  const pricing = obj(formData.pricing)
+  const loanLimits = obj(formData.loan_limits)
+  const comparison = obj(formData.comparison)
+
+  const exclusions = arr(formData.exclusions)
+  const documentsRequired = arr(formData.documents_required)
+  const sources = arr(formData.sources)
+  const extraPoints = arr(formData.extra_points)
+  const detectedProducts = arr(formData.detected_products)
+
+  const sectionHasAnyData = (o: Record<string, any>) =>
+    Object.values(o).some((v) => (isArr(v) ? v.length > 0 : isObj(v) ? Object.keys(v).length > 0 : hasValue(v)))
+
+  const eligibilityHasData = sectionHasAnyData(eligibility) || sectionHasAnyData(comparison)
+  const foirHasData = sectionHasAnyData(foir)
+  const limitsHasData = sectionHasAnyData(loanLimits) || sectionHasAnyData(tenure) || sectionHasAnyData(ltv)
+  const pricingHasData = sectionHasAnyData(pricing) || hasValue(formData.notes)
+  const exclusionsHasData = exclusions.length > 0 || documentsRequired.length > 0 || detectedProducts.length > 0
 
   const sectionsList: { key: SectionKey; label: string; icon: any; badge?: number }[] = [
-    {
-      key: "review",
-      label: "Review Queue",
-      icon: AlertTriangle,
-      badge: reviewItems.filter((i) => i.status === "pending").length,
-    },
+    { key: "review", label: "Review Queue", icon: AlertTriangle, badge: flags.length },
     { key: "eligibility", label: "Eligibility Rules", icon: FileText },
     { key: "foir", label: "FOIR & Obligations", icon: Percent },
-    { key: "limits", label: "Loan Limits & LTV", icon: Landmark },
+    { key: "limits", label: "Loan Limits & Tenure", icon: Landmark },
     { key: "pricing", label: "Pricing & ROI", icon: Tag },
-    { key: "special", label: "Special Conditions", icon: ShieldAlert },
-    { key: "raw_json", label: "Raw JSON Editor", icon: Code2 },
+    { key: "exclusions", label: "Exclusions & Docs", icon: ShieldAlert },
+    { key: "sources", label: "Source Excerpts", icon: BookOpen, badge: sources.length || undefined },
+    { key: "extra", label: "Additional Points", icon: ListPlus, badge: extraPoints.length || undefined },
   ]
 
   return (
-    <div className="w-full space-y-6 text-slate-100">
-      
-      {/* SECTION TABS / NAVIGATION HEADER */}
+    <div className="w-full min-w-0 space-y-6 text-slate-100">
       <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-white/10">
         {sectionsList.map((sec) => {
           const Icon = sec.icon
@@ -162,7 +150,7 @@ export function PolicyDataEditor({
           return (
             <button
               key={sec.key}
-              onClick={() => toggleSection(sec.key)}
+              onClick={() => setActiveSection(sec.key)}
               className={cn(
                 "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all",
                 isActive
@@ -173,7 +161,14 @@ export function PolicyDataEditor({
               <Icon className="w-3.5 h-3.5 shrink-0" />
               <span>{sec.label}</span>
               {sec.badge !== undefined && sec.badge > 0 && (
-                <span className="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.2 rounded-full border border-amber-500/30">
+                <span
+                  className={cn(
+                    "text-[10px] px-1.5 py-0.2 rounded-full border",
+                    sec.key === "review"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                      : "bg-slate-500/20 text-slate-300 border-slate-500/30"
+                  )}
+                >
                   {sec.badge}
                 </span>
               )}
@@ -182,327 +177,474 @@ export function PolicyDataEditor({
         })}
       </div>
 
-      {/* ACTIVE SECTION CONTENT CONTAINER */}
-      <div className="bg-slate-900/60 rounded-xl border border-white/10 p-5 space-y-4">
-
-        {/* 1. REVIEW QUEUE SECTION */}
+      <div className="bg-slate-900/60 rounded-xl border border-white/10 p-5 space-y-4 min-w-0">
+        {/* REVIEW QUEUE */}
         {activeSection === "review" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4 min-w-0">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400" /> Ambiguous Phrases Needing Review
+                <AlertTriangle className="w-4 h-4 text-amber-400" /> Extraction Review Flags
               </h3>
               <span className="text-xs text-slate-400">
-                {reviewItems.filter((i) => i.status === "pending").length} items remaining
+                {flags.length} {flags.length === 1 ? "item" : "items"} flagged
+                {validation.model ? ` · model: ${validation.model}` : ""}
               </span>
             </div>
 
-            <div className="space-y-3">
-              {reviewItems.map((item) => (
-                <div
-                  key={item.id}
-                  className={cn(
-                    "p-4 rounded-xl border bg-slate-950/80 space-y-3 transition-all",
-                    item.status === "pending" && "border-amber-500/40 border-l-4 border-l-amber-400",
-                    item.status === "accepted" && "border-emerald-500/30 border-l-4 border-l-emerald-500 opacity-80",
-                    item.status === "rejected" && "border-white/10 opacity-40"
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded text-xs font-mono text-amber-300">
-                      Source Phrase: &ldquo;{item.sourcePhrase}&rdquo;
-                    </span>
-                    <span className="text-xs text-slate-400">Target Field: <strong>{item.targetField}</strong></span>
+            {flags.length === 0 ? (
+              <div className="flex items-center gap-2 p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-300 text-xs">
+                <Info className="w-4 h-4 shrink-0" />
+                No review flags reported for this extraction.
+                {!readOnly && " Spot-check the other tabs before approving."}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {flags.map((flag, i) => (
+                  <div key={i} className="p-4 rounded-xl border border-amber-500/40 border-l-4 border-l-amber-400 bg-slate-950/80 space-y-1 min-w-0">
+                    <Label className="text-xs text-slate-400">Flag {i + 1}</Label>
+                    <p className="text-xs text-slate-100 bg-slate-900/90 p-3 rounded-lg border border-white/5 leading-relaxed break-words">
+                      {flag}
+                    </p>
                   </div>
+                ))}
+              </div>
+            )}
 
-                  <div className="space-y-1">
-                    <Label className="text-xs text-slate-400">AI Suggested Interpretation:</Label>
-                    {editingReviewId === item.id && !readOnly ? (
-                      <div className="flex items-center gap-2 pt-1">
-                        <Input
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          className="bg-slate-900 border-slate-700 text-xs h-9"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={() => saveReviewEdit(item.id)}
-                          className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs h-9 shrink-0 font-medium"
-                        >
-                          <Save className="w-3.5 h-3.5 mr-1" /> Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setEditingReviewId(null)}
-                          className="text-xs h-9"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-100 bg-slate-900/90 p-3 rounded-lg border border-white/5 leading-relaxed">
-                        {item.suggestedInterpretation}
-                      </p>
-                    )}
-                  </div>
+            {!readOnly && needsReview && (
+              <div className="flex items-center gap-2 text-xs text-amber-400 pt-1">
+                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                This document is marked as needing manual review before approval.
+              </div>
+            )}
+          </div>
+        )}
 
-                  {!readOnly && item.status === "pending" && editingReviewId !== item.id && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        onClick={() => handleReviewAction(item.id, "accepted")}
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-7 px-3"
-                      >
-                        <Check className="w-3 h-3 mr-1" /> Accept Interpretation
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => startEditingReview(item)}
-                        className="border-slate-700 bg-slate-800 text-xs h-7 px-3"
-                      >
-                        <Edit3 className="w-3 h-3 mr-1" /> Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleReviewAction(item.id, "rejected")}
-                        className="text-rose-400 hover:bg-rose-500/10 text-xs h-7 px-2.5"
-                      >
-                        <X className="w-3 h-3 mr-1" /> Reject
-                      </Button>
-                    </div>
-                  )}
+        {/* ELIGIBILITY — generic render of eligibility.* plus comparison.* (headline numbers
+            sometimes land in "comparison" instead of "eligibility" depending on extraction run) */}
+        {activeSection === "eligibility" && (
+          <div className="space-y-5 min-w-0">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <FileText className="w-4 h-4 text-emerald-400" /> Eligibility Parameters
+            </h3>
+
+            {readOnly && !eligibilityHasData ? (
+              <EmptyNote text="No eligibility rules were extracted from this document." />
+            ) : (
+              <>
+                {(!readOnly || sectionHasAnyData(comparison)) && (
+                  <GenericObjectSection
+                    title="Headline Criteria"
+                    obj={comparison}
+                    basePath="comparison"
+                    readOnly={readOnly}
+                    setPath={setPath}
+                    setArrayPath={setArrayPath}
+                  />
+                )}
+                {(!readOnly || sectionHasAnyData(eligibility)) && (
+                  <GenericObjectSection
+                    title="Additional Eligibility Fields"
+                    obj={eligibility}
+                    basePath="eligibility"
+                    readOnly={readOnly}
+                    setPath={setPath}
+                    setArrayPath={setArrayPath}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* FOIR — fully generic */}
+        {activeSection === "foir" && (
+          <div className="space-y-4 min-w-0">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Percent className="w-4 h-4 text-emerald-400" /> FOIR & Obligation Rules
+            </h3>
+
+            {readOnly && !foirHasData ? (
+              <EmptyNote text="No FOIR rules were extracted from this document." />
+            ) : (
+              <GenericObjectSection
+                obj={foir}
+                basePath="foir"
+                readOnly={readOnly}
+                setPath={setPath}
+                setArrayPath={setArrayPath}
+              />
+            )}
+          </div>
+        )}
+
+        {/* LIMITS & TENURE — generic across loan_limits, tenure, ltv */}
+        {activeSection === "limits" && (
+          <div className="space-y-6 min-w-0">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Landmark className="w-4 h-4 text-emerald-400" /> Loan Limits, LTV & Tenure
+            </h3>
+
+            {readOnly && !limitsHasData ? (
+              <EmptyNote text="No loan limit or tenure rules were extracted from this document." />
+            ) : (
+              <>
+                {(!readOnly || sectionHasAnyData(loanLimits)) && (
+                  <GenericObjectSection title="Loan Limits" obj={loanLimits} basePath="loan_limits" readOnly={readOnly} setPath={setPath} setArrayPath={setArrayPath} />
+                )}
+                {(!readOnly || sectionHasAnyData(tenure)) && (
+                  <GenericObjectSection title="Tenure" obj={tenure} basePath="tenure" readOnly={readOnly} setPath={setPath} setArrayPath={setArrayPath} />
+                )}
+                {(!readOnly || sectionHasAnyData(ltv)) && (
+                  <GenericObjectSection title="LTV" obj={ltv} basePath="ltv" readOnly={readOnly} setPath={setPath} setArrayPath={setArrayPath} />
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* PRICING — generic */}
+        {activeSection === "pricing" && (
+          <div className="space-y-4 min-w-0">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Tag className="w-4 h-4 text-emerald-400" /> Pricing & ROI
+            </h3>
+
+            {readOnly && !pricingHasData ? (
+              <EmptyNote text="No pricing details were extracted from this document." />
+            ) : (
+              <>
+                <GenericObjectSection obj={pricing} basePath="pricing" readOnly={readOnly} setPath={setPath} setArrayPath={setArrayPath} />
+                {(!readOnly || hasValue(formData.notes)) && (
+                  <ValueField label="General Notes" value={formData.notes} onChange={(v: any) => setPath("notes", v)} readOnly={readOnly} kind="notes" />
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* EXCLUSIONS & DOCS */}
+        {activeSection === "exclusions" && (
+          <div className="space-y-5 min-w-0">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-emerald-400" /> Exclusions & Required Documents
+            </h3>
+
+            {readOnly && !exclusionsHasData ? (
+              <EmptyNote text="No exclusions, documents, or products were extracted from this document." />
+            ) : (
+              <>
+                {(!readOnly || exclusions.length > 0) && (
+                  <TagListField label={`Ineligible / Excluded Profiles${exclusions.length > 0 ? ` (${exclusions.length})` : ""}`} items={exclusions} readOnly={readOnly} onChange={(next: any) => setArrayPath("exclusions", next)} />
+                )}
+                {(!readOnly || documentsRequired.length > 0) && (
+                  <TagListField label={`Documents Required${documentsRequired.length > 0 ? ` (${documentsRequired.length})` : ""}`} items={documentsRequired} readOnly={readOnly} onChange={(next: any) => setArrayPath("documents_required", next)} />
+                )}
+                {(!readOnly || detectedProducts.length > 0) && (
+                  <TagListField label="Detected Products" items={detectedProducts} readOnly={readOnly} onChange={(next: any) => setPath("detected_products", next)} />
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* SOURCES */}
+        {activeSection === "sources" && (
+          <div className="space-y-3 min-w-0">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-emerald-400" /> Source Excerpts {sources.length > 0 && `(${sources.length})`}
+            </h3>
+            {sources.length === 0 && <EmptyNote text="No source excerpts recorded." />}
+            <div className="space-y-2">
+              {sources.map((s, i) => (
+                <div key={i} className="p-3 rounded-lg border border-white/10 bg-slate-950/70 space-y-1 min-w-0">
+                  <span className="text-[10px] font-mono uppercase tracking-wide text-emerald-400">
+                    {str(s.section) || `Section ${i + 1}`}
+                  </span>
+                  <p className="text-xs text-slate-300 italic leading-relaxed break-words">
+                    &ldquo;{str(s.excerpt)}&rdquo;
+                  </p>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* 2. ELIGIBILITY RULES */}
-        {activeSection === "eligibility" && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <FileText className="w-4 h-4 text-emerald-400" /> Complete Eligibility Parameters
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label className="text-xs text-slate-400">Min Monthly Income (₹)</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.min_salary || ""}
-                  onChange={(e) => handleFieldChange("min_salary", e.target.value)}
-                  placeholder="e.g. 30000"
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-slate-400">Min CIBIL Score</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.min_cibil || ""}
-                  onChange={(e) => handleFieldChange("min_cibil", e.target.value)}
-                  placeholder="e.g. 700"
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-slate-400">Age Eligibility (Min / Max)</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.age_limit || ""}
-                  onChange={(e) => handleFieldChange("age_limit", e.target.value)}
-                  placeholder="e.g. 21 to 60 years"
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-xs text-slate-400">Allowed Employer Categories</Label>
-              <Input
-                disabled={readOnly}
-                value={formData.allowed_employers || ""}
-                onChange={(e) => handleFieldChange("allowed_employers", e.target.value)}
-                placeholder="e.g. CAT A, CAT B, Govt, Public Sector MNCs"
-                className="bg-slate-950 border-slate-800 text-xs mt-1"
-              />
-            </div>
-
-            <div>
-              <Label className="text-xs text-slate-400">Ineligible Profiles / Restrictions</Label>
-              <Textarea
-                disabled={readOnly}
-                value={formData.ineligible_profiles || ""}
-                onChange={(e) => handleFieldChange("ineligible_profiles", e.target.value)}
-                placeholder="e.g. Unlisted Companies, Proprietorships, Defense"
-                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[90px]"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 3. FOIR & OBLIGATIONS */}
-        {activeSection === "foir" && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Percent className="w-4 h-4 text-emerald-400" /> Fixed Obligation to Income Ratio (FOIR)
-            </h3>
-
-            <div>
-              <Label className="text-xs text-slate-400">Income Slab Matrix & FOIR %</Label>
-              <Textarea
-                disabled={readOnly}
-                value={formData.foir_rules || ""}
-                onChange={(e) => handleFieldChange("foir_rules", e.target.value)}
-                placeholder="e.g. Income < 30k = 50% FOIR; 30k-50k = 60% FOIR; > 50k = 65% FOIR"
-                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[100px]"
-              />
-            </div>
-
-            <div>
-              <Label className="text-xs text-slate-400">Obligation Deduction Rules</Label>
-              <Textarea
-                disabled={readOnly}
-                value={formData.obligation_rules || ""}
-                onChange={(e) => handleFieldChange("obligation_rules", e.target.value)}
-                placeholder="e.g. Existing EMIs > 6 months left, Credit Card 5% of limit, FOIR includes rent"
-                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[80px]"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 4. LOAN LIMITS & LTV */}
-        {activeSection === "limits" && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Landmark className="w-4 h-4 text-emerald-400" /> Loan Amounts, Tenure & LTV Limits
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label className="text-xs text-slate-400">Min Loan Amount (₹)</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.min_loan_amount || ""}
-                  onChange={(e) => handleFieldChange("min_loan_amount", e.target.value)}
-                  placeholder="e.g. 100000"
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-slate-400">Max Loan Amount (₹)</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.max_loan_amount || ""}
-                  onChange={(e) => handleFieldChange("max_loan_amount", e.target.value)}
-                  placeholder="e.g. 4000000"
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-slate-400">Max Tenure (Months)</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.max_tenure || ""}
-                  onChange={(e) => handleFieldChange("max_tenure", e.target.value)}
-                  placeholder="e.g. 60 Months"
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 5. PRICING & ROI */}
-        {activeSection === "pricing" && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Tag className="w-4 h-4 text-emerald-400" /> Interest Rates & Processing Fees
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs text-slate-400">Rate of Interest (ROI %)</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.roi || ""}
-                  onChange={(e) => handleFieldChange("roi", e.target.value)}
-                  placeholder="e.g. 10.5% - 14.0% p.a."
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-slate-400">Processing Fee</Label>
-                <Input
-                  disabled={readOnly}
-                  value={formData.processing_fee || ""}
-                  onChange={(e) => handleFieldChange("processing_fee", e.target.value)}
-                  placeholder="e.g. 1% to 2% + GST"
-                  className="bg-slate-950 border-slate-800 text-xs mt-1"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 6. SPECIAL CONDITIONS */}
-        {activeSection === "special" && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-emerald-400" /> Special Conditions & Calculations
-            </h3>
-
-            <div>
-              <Label className="text-xs text-slate-400">Special Notes & Banking Rules</Label>
-              <Textarea
-                disabled={readOnly}
-                value={formData.special_conditions || ""}
-                onChange={(e) => handleFieldChange("special_conditions", e.target.value)}
-                placeholder="e.g. Average Bank Balance (ABB) evaluated on 3rd, 7th, 12th, and 30th of month."
-                className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[100px]"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 7. RAW JSON EDITOR */}
-        {activeSection === "raw_json" && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+        {/* ADDITIONAL POINTS */}
+        {activeSection === "extra" && (
+          <div className="space-y-3 min-w-0">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Code2 className="w-4 h-4 text-emerald-400" /> Complete Extracted JSON Tree
+                <ListPlus className="w-4 h-4 text-emerald-400" /> Additional Points {extraPoints.length > 0 && `(${extraPoints.length})`}
               </h3>
-              {jsonError && <span className="text-xs text-rose-400 font-medium">{jsonError}</span>}
+              {!readOnly && <p className="text-xs text-slate-500">For anything the AI missed or that doesn't fit above</p>}
             </div>
 
-            <Textarea
-              disabled={readOnly}
-              value={jsonText}
-              onChange={(e) => handleJsonChange(e.target.value)}
-              className="font-mono text-xs bg-slate-950 border-slate-800 text-emerald-400 min-h-[300px] leading-relaxed"
-            />
+            {readOnly && extraPoints.length === 0 ? (
+              <EmptyNote text="No additional points were added for this document." />
+            ) : (
+              <ListField
+                items={extraPoints}
+                readOnly={readOnly}
+                onUpdate={(i: number, v: string) => updateStringArrayItem("extra_points", i, v)}
+                onRemove={(i: number) => removeStringArrayItem("extra_points", i)}
+                onAdd={() => addStringArrayItem("extra_points")}
+                hideLabel
+              />
+            )}
           </div>
         )}
-
       </div>
+    </div>
+  )
+}
 
-      {/* FOOTER: Source Evidence Reference */}
-      <div className="bg-slate-900/90 p-4 rounded-xl border border-white/10 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Source Evidence Excerpt</span>
-          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-            Page 3
-          </span>
+// =========================================================================
+// Generic section renderer — walks whatever keys actually exist in an
+// object (scalars, string-arrays, or arrays-of-objects) and renders them,
+// instead of assuming fixed field names. This is what makes the UI
+// resilient to naming drift between different extraction runs.
+// =========================================================================
+function GenericObjectSection({
+  title,
+  obj: sectionObj,
+  basePath,
+  readOnly,
+  setPath,
+  setArrayPath,
+}: {
+  title?: string
+  obj: Record<string, any>
+  basePath: string
+  readOnly: boolean
+  setPath: (path: string, value: any) => void
+  setArrayPath: (path: string, arr: any[]) => void
+}) {
+  const entries = Object.entries(sectionObj)
+  const scalarEntries = entries.filter(([, v]) => isScalar(v))
+  const stringArrayEntries = entries.filter(([, v]) => isArr(v) && v.every((x: any) => isScalar(x)))
+  const objectArrayEntries = entries.filter(([, v]) => isArr(v) && v.some((x: any) => isObj(x)))
+
+  const visibleScalars = readOnly ? scalarEntries.filter(([, v]) => hasValue(v)) : scalarEntries
+  const visibleStringArrays = readOnly ? stringArrayEntries.filter(([, v]) => v.length > 0) : stringArrayEntries
+  const visibleObjectArrays = readOnly ? objectArrayEntries.filter(([, v]) => v.length > 0) : objectArrayEntries
+
+  if (visibleScalars.length === 0 && visibleStringArrays.length === 0 && visibleObjectArrays.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="space-y-4 min-w-0">
+      {title && <Label className="text-xs font-semibold text-slate-300 uppercase tracking-wide">{title}</Label>}
+
+      {visibleScalars.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleScalars.map(([key, value]) => (
+            <ValueField
+              key={key}
+              label={prettyLabel(key)}
+              value={value}
+              readOnly={readOnly}
+              kind={typeof value === "number" ? "num" : "text"}
+              onChange={(v: any) => setPath(`${basePath}.${key}`, v)}
+            />
+          ))}
         </div>
-        <blockquote className="text-xs text-slate-300 italic bg-slate-950 p-3 rounded-lg border border-white/5 leading-relaxed border-l-2 border-l-emerald-400">
-          &ldquo;IF salary is less than 30k, FOIR = 50%. Salary between 30k to 50k, FOIR = 60%. Unlisted companies are not eligible.&rdquo;
-        </blockquote>
-      </div>
+      )}
 
+      {visibleStringArrays.map(([key, value]) => (
+        <TagListField
+          key={key}
+          label={`${prettyLabel(key)}${value.length > 0 ? ` (${value.length})` : ""}`}
+          items={value}
+          readOnly={readOnly}
+          onChange={(next: any) => setArrayPath(`${basePath}.${key}`, next)}
+        />
+      ))}
+
+      {visibleObjectArrays.map(([key, value]) => (
+        <div key={key} className="space-y-2">
+          <Label className="text-xs text-slate-400">{prettyLabel(key)} {value.length > 0 && `(${value.length})`}</Label>
+          <div className="space-y-2">
+            {value.map((item: any, i: number) => (
+              <div key={i} className="p-3 rounded-lg border border-white/10 bg-slate-950/70 flex flex-wrap gap-3 min-w-0">
+                {Object.entries(item).map(([itemKey, itemVal]) => {
+                  if (readOnly && !hasValue(itemVal)) return null
+                  return (
+                    <div key={itemKey} className="min-w-0 flex-1">
+                      <Label className="text-[10px] text-slate-500 capitalize">{prettyLabel(itemKey)}</Label>
+                      {readOnly ? (
+                        <p className="text-xs text-slate-200 mt-0.5">{str(itemVal)}</p>
+                      ) : (
+                        <Input
+                          value={str(itemVal)}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            const current = value as any[]
+                            const nextArr = current.map((it, idx) =>
+                              idx === i ? { ...it, [itemKey]: isNaN(Number(v)) || v === "" ? v : Number(v) } : it
+                            )
+                            setArrayPath(`${basePath}.${key}`, nextArr)
+                          }}
+                          className="bg-slate-900 border-slate-800 text-xs mt-0.5 h-8 w-full"
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// =========================================================================
+function ValueField({
+  label,
+  value,
+  onChange,
+  readOnly,
+  kind,
+}: {
+  label: string
+  value: any
+  onChange: (v: any) => void
+  readOnly: boolean
+  kind: "text" | "num" | "notes"
+}) {
+  if (readOnly) {
+    if (!hasValue(value)) return null
+    return (
+      <div className="min-w-0">
+        <Label className="text-xs text-slate-400">{label}</Label>
+        <p className="text-sm text-slate-100 mt-1 leading-relaxed break-words">{str(value)}</p>
+      </div>
+    )
+  }
+
+  if (kind === "notes") {
+    return (
+      <div className="min-w-0">
+        <Label className="text-xs text-slate-400">{label}</Label>
+        <Textarea
+          value={str(value)}
+          onChange={(e) => onChange(e.target.value)}
+          className="bg-slate-950 border-slate-800 text-xs mt-1 min-h-[70px] w-full"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-w-0">
+      <Label className="text-xs text-slate-400">{label}</Label>
+      <Input
+        value={value === null || value === undefined ? "" : String(value)}
+        onChange={(e) => {
+          const v = e.target.value
+          if (kind === "num") {
+            onChange(v === "" ? null : isNaN(Number(v)) ? v : Number(v))
+          } else {
+            onChange(v)
+          }
+        }}
+        className="bg-slate-950 border-slate-800 text-xs mt-1 w-full"
+      />
+    </div>
+  )
+}
+
+function EmptyNote({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-2 p-3 rounded-lg border border-white/10 bg-slate-950/40 text-slate-500 text-xs">
+      <Info className="w-3.5 h-3.5 shrink-0" /> {text}
+    </div>
+  )
+}
+
+function TagListField({ label, items, onChange, readOnly }: any) {
+  const [draft, setDraft] = useState("")
+  const removeAt = (i: number) => onChange(items.filter((_: any, idx: number) => idx !== i))
+  const addDraft = () => {
+    const v = draft.trim()
+    if (!v) return
+    onChange([...items, v])
+    setDraft("")
+  }
+
+  if (readOnly && items.length === 0) return null
+
+  return (
+    <div className="min-w-0">
+      <Label className="text-xs text-slate-400">{label}</Label>
+      <div className="flex flex-wrap gap-2 mt-2">
+        {items.length === 0 && !readOnly && <span className="text-xs text-slate-500">Not extracted</span>}
+        {items.map((tag: string, i: number) => (
+          <span key={i} className="inline-flex items-center gap-1.5 bg-white/5 border border-white/10 text-slate-200 text-xs px-2.5 py-1 rounded-full max-w-full">
+            <span className="truncate max-w-[220px]">{str(tag)}</span>
+            {!readOnly && (
+              <button onClick={() => removeAt(i)} className="text-slate-400 hover:text-rose-400 shrink-0">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2 mt-2">
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addDraft())}
+            className="bg-slate-950 border-slate-800 text-xs h-8"
+          />
+          <Button size="sm" variant="outline" className="h-8 text-xs border-slate-700 bg-slate-800 shrink-0" onClick={addDraft}>
+            <Plus className="w-3 h-3 mr-1" /> Add
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ListField({ items, onUpdate, onRemove, onAdd, readOnly, hideLabel }: any) {
+  if (readOnly) {
+    if (items.length === 0) return null
+    return (
+      <div className="space-y-2">
+        {items.map((item: string, i: number) => (
+          <p key={i} className="text-sm text-slate-100 leading-relaxed break-words p-3 rounded-lg border border-white/5 bg-slate-950/50">
+            {item}
+          </p>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-end">
+        <Button size="sm" variant="outline" className={cn("h-7 text-xs border-slate-700 bg-slate-800", hideLabel && "ml-auto")} onClick={onAdd}>
+          <Plus className="w-3 h-3 mr-1" /> Add Point
+        </Button>
+      </div>
+      {items.length === 0 && <EmptyNote text="None added yet." />}
+      <div className="space-y-2">
+        {items.map((item: string, i: number) => (
+          <div key={i} className="flex items-start gap-2 min-w-0">
+            <Textarea
+              value={item}
+              onChange={(e) => onUpdate(i, e.target.value)}
+              className="bg-slate-950 border-slate-800 text-xs min-h-[50px] flex-1"
+            />
+            <button onClick={() => onRemove(i)} className="text-rose-400 hover:text-rose-300 shrink-0 p-1.5 mt-1">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

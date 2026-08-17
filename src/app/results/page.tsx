@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   Sparkles, 
@@ -9,7 +10,8 @@ import {
   ChevronRight,
   ThumbsUp,
   ThumbsDown,
-  FileWarning
+  FileWarning,
+  ArrowLeft
 } from "lucide-react"
 import Link from "next/link"
 import { GlassNavbar } from "@/components/glass-navbar"
@@ -57,6 +59,7 @@ function formatDerivedValue(value: unknown): string {
 }
 
 export default function ResultsPage() {
+  const router = useRouter()
   const [selectedBank, setSelectedBank] = useState<number | null>(null)
   const [result, setResult] = useState<FreshLoanResponse | BalanceTransferResponse | null>(null)
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -184,6 +187,14 @@ export default function ResultsPage() {
       
       <div className="pt-20 pb-12">
         <div className="max-w-7xl mx-auto px-4">
+          <button
+            type="button"
+           onClick={() => router.back()}
+           className="inline-flex items-center gap-2 p-2 -ml-2 mb-4 rounded-xl glass hover:bg-white/10 transition-colors text-muted-foreground hover:text-white"
+         >
+          <ArrowLeft className="w-5 h-5" />  
+          <span className="text-sm">Back</span>
+         </button>
           {/* Hero Section */}
           <section className="relative py-12 mb-8">
             <AuroraBackground intensity="medium" />

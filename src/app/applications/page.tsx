@@ -233,7 +233,6 @@ export default function ApplicationsPage() {
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-xs text-muted-foreground">#{app.id}</p>
                         <p className="text-xs text-muted-foreground">{formatDate(app.created_at)}</p>
                       </div>
                       {isOpening ? (
