@@ -21,10 +21,6 @@ import { MagneticButton } from "@/components/magnetic-button"
 import { AnimatedCounter } from "@/components/animated-counter"
 import { CircularProgress } from "@/components/circular-progress"
 
-// -----------------------------------------------------------------------
-// Same source as the /applications page — adjust the import path below
-// if userAPI.ts lives somewhere else in your project.
-// -----------------------------------------------------------------------
 import {
   listApplications,
   ApiError,
@@ -87,7 +83,6 @@ export default function DashboardPage() {
     }
   }, [])
 
-  // Derived stats from real data (falls back gracefully while loading/empty)
   const approvedCount = applications.filter((a) =>
     ["approved", "completed", "eligible", "success"].includes(a.status?.toLowerCase())
   ).length
@@ -99,7 +94,6 @@ export default function DashboardPage() {
       <GlassSidebar role="applicant" />
       
       <main className="ml-64 p-6 transition-all duration-300">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-white mb-1">Welcome back</h1>
@@ -115,12 +109,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-4 mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <GlassCard className="p-6" glow>
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-[#10B981]/20 flex items-center justify-center">
@@ -137,11 +127,7 @@ export default function DashboardPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <GlassCard className="p-6" glow>
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-[#6366F1]/20 flex items-center justify-center">
@@ -156,11 +142,7 @@ export default function DashboardPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <GlassCard className="p-6" glow>
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-[#FF6B35]/20 flex items-center justify-center">
@@ -174,11 +156,7 @@ export default function DashboardPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
             <GlassCard className="p-6" glow>
               <div className="flex items-center justify-between mb-4">
                 <div className="w-10 h-10 rounded-xl bg-[#06B6D4]/20 flex items-center justify-center">
@@ -193,23 +171,19 @@ export default function DashboardPage() {
           </motion.div>
         </div>
 
-        {/* Main Content Grid */}
         <div className="grid grid-cols-3 gap-6 items-stretch">
-          {/* Applications */}
           <div className="col-span-2 flex">
             <GlassCard className="p-6 flex flex-col w-full">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-white">My Applications</h2>
               </div>
 
-              {/* Loading */}
               {isLoading && (
                 <div className="flex-1 flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
                 </div>
               )}
 
-              {/* Error */}
               {!isLoading && loadError && (
                 <div className="flex-1 flex flex-col items-center justify-center py-8 text-center">
                   <FileWarning className="w-6 h-6 text-[#FF6B35] mb-2" />
@@ -218,7 +192,6 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Empty */}
               {!isLoading && !loadError && recentApplications.length === 0 && (
                 <div className="flex-1 flex flex-col items-center justify-center py-8 text-center">
                   <Inbox className="w-6 h-6 text-muted-foreground mb-2" />
@@ -234,7 +207,6 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* List */}
               {!isLoading && !loadError && recentApplications.length > 0 && (
                 <div className="space-y-4 flex-1">
                   {recentApplications.map((app, index) => {
@@ -284,7 +256,6 @@ export default function DashboardPage() {
             </GlassCard>
           </div>
 
-          {/* Right Column */}
           <div className="flex">
             <GlassCard className="p-6 h-full flex flex-col w-full" glow glowColor="aurora">
               <h2 className="text-lg font-semibold text-white mb-4">Credit Score</h2>

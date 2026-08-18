@@ -45,19 +45,17 @@ export default function LoginPage() {
     setErrors({})
 
     try {
-      // login() from lib/api.ts:
-      //  1. POSTs form-encoded username/password to /auth/token
-      //  2. Stores the returned JWT under the "access_token" key
-      //  3. Calls GET /auth/me to fetch the real user (including role)
       const user = await login(username, password)
       router.push(user.role === "admin" ? "/admin/dashboard" : "/dashboard")
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Something went wrong. Please try again."
       setErrors({ form: message })
-    } finally {
-      setIsLoading(false)
+      setIsLoading(false) // re-enable fields so the user can retry
     }
+    // NOTE: no `finally` here — on success we're navigating away, and we
+    // deliberately keep isLoading=true (fields locked) until that happens
+    // so the user can't edit/resubmit mid-navigation.
   }
 
   return (
@@ -159,6 +157,7 @@ export default function LoginPage() {
                   label="Username"
                   type="text"
                   value={username}
+                  disabled={isLoading}
                   onChange={(v: string) => {
                     setUsername(v)
                     setErrors((prev) => ({ ...prev, username: undefined, form: undefined }))
@@ -174,6 +173,7 @@ export default function LoginPage() {
                     label="Password"
                     type={showPassword ? "text" : "password"}
                     value={password}
+                    disabled={isLoading}
                     onChange={(v: string) => {
                       setPassword(v)
                       setErrors((prev) => ({ ...prev, password: undefined, form: undefined }))
@@ -182,8 +182,9 @@ export default function LoginPage() {
                   />
                   <button
                     type="button"
+                    disabled={isLoading}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -191,19 +192,24 @@ export default function LoginPage() {
                 {errors.password && <p className="mt-1 text-sm text-red-400">{errors.password}</p>}
               </div>
 
-              <label className="flex items-center gap-2 cursor-pointer w-fit">
+              <label
+                className={`flex items-center gap-2 w-fit ${
+                  isLoading ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                }`}
+              >
                 <div className="relative">
                   <input
                     type="checkbox"
                     checked={rememberMe}
+                    disabled={isLoading}
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="sr-only"
                   />
                   <div
-  className={`w-5 h-5 rounded border-2 transition-all duration-300 ${
-    rememberMe ? "bg-blue-600 border-transparent" : "border-white/30"
-  }`}
->
+                    className={`w-5 h-5 rounded border-2 transition-all duration-300 ${
+                      rememberMe ? "bg-blue-600 border-transparent" : "border-white/30"
+                    }`}
+                  >
                     {rememberMe && (
                       <motion.svg
                         initial={{ scale: 0 }}
