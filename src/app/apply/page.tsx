@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, ArrowLeft, Sparkles, Loader2 } from "lucide-react"
 import { AuroraBackground } from "@/components/aurora-background"
@@ -111,13 +112,25 @@ export default function ApplyPage() {
       <GlassSidebar />
       <div className="flex ml-64">
         <div className="flex-1">
-          <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="max-w-7xl mx-auto px-4 py-8">
             {/* Header */}
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-              <h1 className="text-3xl font-bold text-white">Personal Loan Application</h1>
-              <p className="mt-2 text-muted-foreground">
-                Fill in your details to receive AI-powered loan recommendations.
-              </p>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8 flex items-center gap-4"
+            >
+              <Link
+                href="/dashboard"
+                className="p-2 rounded-xl glass hover:bg-white/10 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-muted-foreground" />
+              </Link>
+              <div>
+                <h1 className="text-3xl font-bold text-white">Personal Loan Application</h1>
+                <p className="mt-2 text-muted-foreground">
+                  Fill in your details to receive AI-powered loan recommendations.
+                </p>
+              </div>
             </motion.div>
 
             <StepIndicator currentStep={currentStep} />

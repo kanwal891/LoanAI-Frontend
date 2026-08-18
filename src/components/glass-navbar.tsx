@@ -72,15 +72,10 @@ shadow-xl
               </Link>
             ) : (
               <>
-                <Link href="/login">
-                  <MagneticButton variant="ghost" size="sm">
-                    Sign In
-                  </MagneticButton>
-                </Link>
 
-                <Link href="/apply">
+                <Link href="/login">
                   <MagneticButton variant="primary" size="sm">
-                    Get Started
+                    Sign In
                   </MagneticButton>
                 </Link>
               </>
@@ -129,14 +124,9 @@ shadow-xl
                 ) : (
                   <>
                     <Link href="/login" className="block">
-                      <MagneticButton variant="secondary" size="sm" className="w-full">
-                        Sign In
-                      </MagneticButton>
-                    </Link>
-                    <Link href="/apply" className="block">
                       <MagneticButton variant="primary" size="sm" className="w-full">
-                        Get Started
-                      </MagneticButton>
+                        Sign In
+                                              </MagneticButton>
                     </Link>
                   </>
                 )}

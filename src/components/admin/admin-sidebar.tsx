@@ -32,7 +32,7 @@ const sidebarItems = [
   {
     title: "System",
     items: [
-      { name: "Settings", href: "/admin/settings", icon: Cog },
+      { name: "Profile", href: "/admin/settings", icon: Cog },
     ],
   },
 

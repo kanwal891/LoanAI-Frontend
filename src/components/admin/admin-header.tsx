@@ -87,14 +87,13 @@ export function AdminHeader() {
     align="end"
     className="w-56 border-white/10 bg-[#0a0f1a]"
   >
-    <DropdownMenuLabel>My Account</DropdownMenuLabel>
 
     <DropdownMenuSeparator className="bg-white/10" />
 
    
 
     <DropdownMenuItem asChild>
-      <Link href="/admin/settings">Settings</Link>
+      <Link href="/admin/settings">My Account</Link>
     </DropdownMenuItem>
 
     <DropdownMenuSeparator className="bg-white/10" />
@@ -103,7 +102,7 @@ export function AdminHeader() {
       asChild
       className="text-destructive focus:text-destructive"
     >
-      <Link href="/">Logout</Link>
+      <Link href="/login">Logout</Link>
     </DropdownMenuItem>
   </DropdownMenuContent>
 </DropdownMenu>

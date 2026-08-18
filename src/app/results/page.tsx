@@ -185,16 +185,25 @@ export default function ResultsPage() {
     <main className="min-h-screen bg-[#080B14]">
       <GlassNavbar variant="dashboard" />
       
-      <div className="pt-20 pb-12">
+      {/* pt-28 (was pt-20) gives extra clearance below the fixed navbar so the
+          Back button row below doesn't sit underneath it. */}
+      <div className="pt-28 pb-12">
         <div className="max-w-7xl mx-auto px-4">
-          <button
-            type="button"
-           onClick={() => router.back()}
-           className="inline-flex items-center gap-2 p-2 -ml-2 mb-4 rounded-xl glass hover:bg-white/10 transition-colors text-muted-foreground hover:text-white"
-         >
-          <ArrowLeft className="w-5 h-5" />  
-          <span className="text-sm">Back</span>
-         </button>
+          {/* Back button lives in its own row with relative z-20, kept fully
+              separate from the hero section's AuroraBackground (which is
+              absolutely positioned within its own "relative" section below)
+              so the two never overlap. */}
+          <div className="relative z-20 mb-6">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-2 p-2 -ml-2 rounded-xl glass hover:bg-white/10 transition-colors text-muted-foreground hover:text-white"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm">Back</span>
+            </button>
+          </div>
+
           {/* Hero Section */}
           <section className="relative py-12 mb-8">
             <AuroraBackground intensity="medium" />

@@ -200,10 +200,10 @@ export default function LoginPage() {
                     className="sr-only"
                   />
                   <div
-                    className={`w-5 h-5 rounded border-2 transition-all duration-300 ${
-                      rememberMe ? "bg-gradient-to-r from-primary to-accent border-transparent" : "border-white/30"
-                    }`}
-                  >
+  className={`w-5 h-5 rounded border-2 transition-all duration-300 ${
+    rememberMe ? "bg-blue-600 border-transparent" : "border-white/30"
+  }`}
+>
                     {rememberMe && (
                       <motion.svg
                         initial={{ scale: 0 }}

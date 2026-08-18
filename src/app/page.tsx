@@ -169,7 +169,7 @@ export default function LandingPage() {
 
             {/* CTA Buttons */}
             <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-              <Link href="/apply">
+              <Link href="/login">
                 <MagneticButton variant="primary" size="lg">
                   Check Your Eligibility
                   <ArrowRight className="w-5 h-5" />
@@ -415,7 +415,7 @@ export default function LandingPage() {
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
               Join 50,000+ users who found their ideal loan with LoanAI
             </p>
-            <Link href="/apply">
+            <Link href="/login">
               <MagneticButton variant="primary" size="lg">
                 Start Your Free Assessment
                 <ArrowRight className="w-5 h-5" />

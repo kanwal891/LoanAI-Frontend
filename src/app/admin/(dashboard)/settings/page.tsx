@@ -3,28 +3,18 @@
 import { useEffect, useState } from "react"
 import {
   User,
-  Lock,
   Bell,
   Loader2,
-  Check,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Button } from "@/components/ui/button"
 import { getCurrentUser, type UserRead, ApiError } from "@/lib/api"
 
 export default function SettingsPage() {
   const [section, setSection] = useState<"settings" | "admin">("settings")
-  const [isSaving, setIsSaving] = useState(false)
-  const [justSaved, setJustSaved] = useState(false)
   const [user, setUser] = useState<UserRead | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [userError, setUserError] = useState<string | null>(null)
-  const [username, setUsername] = useState("")
-  const [fullName, setFullName] = useState("")
-  const [email, setEmail] = useState("")
 
   useEffect(() => {
     let mounted = true
@@ -36,9 +26,6 @@ export default function SettingsPage() {
       .then((currentUser) => {
         if (!mounted) return
         setUser(currentUser)
-        setUsername(currentUser.username ?? "")
-        setFullName(currentUser.full_name ?? "")
-        setEmail(currentUser.email ?? "")
       })
       .catch((err) => {
         if (!mounted) return
@@ -55,33 +42,20 @@ export default function SettingsPage() {
     }
   }, [])
 
-  const handleSave = async () => {
-    setIsSaving(true)
-    setJustSaved(false)
-    try {
-      // TODO: replace with real save logic (API call, server action, etc.)
-      await new Promise((resolve) => setTimeout(resolve, 800))
-      setJustSaved(true)
-      setTimeout(() => setJustSaved(false), 2000)
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-muted-foreground">
           {section === "settings"
-            ? "Manage your profile, password, and notifications"
+            ? "Manage your profile and notifications"
             : "Configure platform, AI, and administrative controls"}
         </p>
       </div>
 
       {section === "settings" && (
         <div className="space-y-6">
-          {/* Profile */}
+          {/* Profile — read-only, straight from the API, no editing */}
           <GlassCard className="p-6">
             <div className="mb-6 flex items-center gap-3">
               <div className="rounded-lg bg-linear-to-br from-primary to-indigo-500 p-2">
@@ -89,63 +63,41 @@ export default function SettingsPage() {
               </div>
               <h2 className="font-semibold text-white">Profile</h2>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label>Username</Label>
-                <Input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={loadingUser ? "Loading..." : "admin"}
-                  className="border-white/10 bg-white/5"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Full Name</Label>
-                <Input
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder={loadingUser ? "Loading..." : "Jane Doe"}
-                  className="border-white/10 bg-white/5"
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label>Email Address</Label>
-                <Input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={loadingUser ? "Loading..." : "admin@example.com"}
-                  className="border-white/10 bg-white/5"
-                />
-              </div>
-            </div>
-            {userError ? (
-              <p className="mt-3 text-sm text-rose-400">{userError}</p>
-            ) : null}
-          </GlassCard>
 
-          {/* Change Password */}
-          <GlassCard className="p-6">
-            <div className="mb-6 flex items-center gap-3">
-              <div className="rounded-lg bg-linear-to-br from-emerald-500 to-teal-500 p-2">
-                <Lock className="h-5 w-5 text-white" />
+            {loadingUser ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-              <h2 className="font-semibold text-white">Change Password</h2>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label>Current Password</Label>
-                <Input type="password" placeholder="••••••••" className="border-white/10 bg-white/5" />
+            ) : userError ? (
+              <p className="text-sm text-rose-400">{userError}</p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Username</p>
+                  <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
+                    {user?.username || "—"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Full Name</p>
+                  <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
+                    {user?.full_name || "—"}
+                  </p>
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <p className="text-xs text-muted-foreground">Email Address</p>
+                  <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
+                    {user?.email || "—"}
+                  </p>
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <p className="text-xs text-muted-foreground">Role</p>
+                  <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white">
+                    {user?.role || "—"}
+                  </p>
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label>New Password</Label>
-                <Input type="password" placeholder="••••••••" className="border-white/10 bg-white/5" />
-              </div>
-              <div className="space-y-1">
-                <Label>Confirm New Password</Label>
-                <Input type="password" placeholder="••••••••" className="border-white/10 bg-white/5" />
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Use at least 8 characters with letters, numbers, and a symbol.</p>
+            )}
           </GlassCard>
 
           {/* Notifications */}
@@ -164,29 +116,6 @@ export default function SettingsPage() {
               <Switch defaultChecked />
             </div>
           </GlassCard>
-
-          {/* Save Changes */}
-          <div className="flex justify-end">
-            <Button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="min-w-40 bg-linear-to-br from-primary to-indigo-500 text-white"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : justSaved ? (
-                <>
-                  <Check className="mr-2 h-4 w-4" />
-                  Saved
-                </>
-              ) : (
-                "Save Changes"
-              )}
-            </Button>
-          </div>
         </div>
       )}
     </div>
