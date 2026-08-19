@@ -21,6 +21,13 @@ class ApiError extends Error {
   }
 }
 const TOKEN_KEY = "access_token"
+// One-shot cache of the user object we already verified during login, so
+// the AuthGuard on the very next page doesn't have to make a second,
+// redundant round-trip to /auth/me right after we just proved the token
+// is good. This is what removed the "hangs forever right after login,
+// works after refresh" race — that second call was landing in the middle
+// of the backend's cold-start window on Render's free tier.
+const CACHED_USER_KEY = "cached_user"
 
 const ALLOWED_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".txt"])
 const DEFAULT_MAX_UPLOAD_MB = 50
@@ -37,7 +44,37 @@ function setToken(token: string) {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+  clearCachedUser()
 }
+
+/** Stash a just-verified user for the page we're about to navigate to. */
+function cacheVerifiedUser(user: UserRead) {
+  if (typeof window === "undefined") return
+  sessionStorage.setItem(CACHED_USER_KEY, JSON.stringify(user))
+}
+
+/**
+ * Consume (read + clear) the cached user, if any. One-shot by design —
+ * only the very first AuthGuard check after login should skip the network
+ * call; every check after that should validate for real.
+ */
+export function consumeCachedUser(): UserRead | null {
+  if (typeof window === "undefined") return null
+  const raw = sessionStorage.getItem(CACHED_USER_KEY)
+  if (!raw) return null
+  sessionStorage.removeItem(CACHED_USER_KEY)
+  try {
+    return JSON.parse(raw) as UserRead
+  } catch {
+    return null
+  }
+}
+
+function clearCachedUser() {
+  if (typeof window === "undefined") return
+  sessionStorage.removeItem(CACHED_USER_KEY)
+}
+
 export async function login(username: string, password: string): Promise<UserRead> {
   const body = new URLSearchParams()
   body.set("username", username)
@@ -58,16 +95,33 @@ export async function login(username: string, password: string): Promise<UserRea
 
   const { access_token }: TokenResponse = await tokenRes.json()
   setToken(access_token)
-  return getCurrentUser()
+
+  const user = await getCurrentUser()
+  cacheVerifiedUser(user)
+  return user
 }
 
-export async function getCurrentUser(): Promise<UserRead> {
+/**
+ * Validates the token against the backend.
+ * @param timeoutMs how long to wait before giving up — keeps a cold/slow
+ *   backend from hanging the caller (e.g. AuthGuard) forever.
+ */
+export async function getCurrentUser(timeoutMs = 15000): Promise<UserRead> {
   const token = getToken()
   if (!token) throw new ApiError("Not authenticated", 401)
 
-  const res = await fetch(`${API_BASE_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch (err) {
+    // Network error or timeout — likely a cold/slow backend, not a bad
+    // token. Don't clear the token here; let the caller decide (AuthGuard
+    // retries rather than logging the user out over a slow server).
+    throw new ApiError("Could not reach the server. Please try again.", 0)
+  }
 
   if (!res.ok) {
     clearToken()

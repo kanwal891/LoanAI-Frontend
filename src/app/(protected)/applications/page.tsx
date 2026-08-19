@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { ArrowLeft, Loader2, RefreshCw, FileWarning, Inbox } from "lucide-react"
+import { ArrowLeft, RefreshCw, FileWarning, Inbox, FileText } from "lucide-react"
 import Link from "next/link"
 import { GlassSidebar } from "@/components/glass-sidebar"
 import { GlassCard } from "@/components/glass-card"
 import { MagneticButton } from "@/components/magnetic-button"
+import { Spinner, SectionLoader } from "@/components/loading"
 
 // -----------------------------------------------------------------------
 // Eligibility API — adjust the import path below if userAPI.ts lives
@@ -166,8 +167,8 @@ export default function ApplicationsPage() {
 
         {/* Loading state */}
         {isLoading && (
-          <GlassCard className="p-12 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
+          <GlassCard className="p-6">
+            <SectionLoader icon={FileText} label="Loading your applications…" />
           </GlassCard>
         )}
 
@@ -236,7 +237,7 @@ export default function ApplicationsPage() {
                         <p className="text-xs text-muted-foreground">{formatDate(app.created_at)}</p>
                       </div>
                       {isOpening ? (
-                        <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+                        <Spinner size="sm" />
                       ) : (
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadgeClass(app.status)}`}

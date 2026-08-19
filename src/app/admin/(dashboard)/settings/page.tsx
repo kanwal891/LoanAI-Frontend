@@ -4,10 +4,10 @@ import { useEffect, useState } from "react"
 import {
   User,
   Bell,
-  Loader2,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Switch } from "@/components/ui/switch"
+import { Skeleton } from "@/components/loading" // adjust path to wherever Skeleton lives
 import { getCurrentUser, type UserRead, ApiError } from "@/lib/api"
 
 export default function SettingsPage() {
@@ -65,8 +65,23 @@ export default function SettingsPage() {
             </div>
 
             {loadingUser ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-9 w-full rounded-lg" />
+                </div>
+                <div className="space-y-1">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-9 w-full rounded-lg" />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Skeleton className="h-3 w-28" />
+                  <Skeleton className="h-9 w-full rounded-lg" />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-9 w-full rounded-lg" />
+                </div>
               </div>
             ) : userError ? (
               <p className="text-sm text-rose-400">{userError}</p>

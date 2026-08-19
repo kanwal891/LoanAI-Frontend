@@ -10,9 +10,9 @@ import {
   Sparkles,
   BarChart3,
   Activity,
-  Loader2,
   FileWarning,
   Inbox,
+  FileText,
 } from "lucide-react"
 import Link from "next/link"
 import { GlassSidebar } from "@/components/glass-sidebar"
@@ -20,6 +20,7 @@ import { GlassCard } from "@/components/glass-card"
 import { MagneticButton } from "@/components/magnetic-button"
 import { AnimatedCounter } from "@/components/animated-counter"
 import { CircularProgress } from "@/components/circular-progress"
+import { SectionLoader } from "@/components/loading"
 
 import {
   listApplications,
@@ -179,8 +180,8 @@ export default function DashboardPage() {
               </div>
 
               {isLoading && (
-                <div className="flex-1 flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
+                <div className="flex-1">
+                  <SectionLoader icon={FileText} label="Loading your applications…" />
                 </div>
               )}
 

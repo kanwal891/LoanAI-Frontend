@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { User, Mail, ShieldCheck, Loader2, FileWarning, ArrowLeft } from "lucide-react"
+import { User, Mail, ShieldCheck, FileWarning, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { GlassCard } from "@/components/glass-card"
 import { GlassSidebar } from "@/components/glass-sidebar"
+import { SectionLoader } from "@/components/loading"
 
 // -----------------------------------------------------------------------
 // Same source as the rest of the app — adjust the import path below if
@@ -74,11 +75,7 @@ export default function ProfilePage() {
 
           <GlassCard className="w-full p-6">
             {/* Loading */}
-            {isLoading && (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
+            {isLoading && <SectionLoader icon={User} label="Loading your profile…" />}
 
             {/* Error */}
             {!isLoading && loadError && (
