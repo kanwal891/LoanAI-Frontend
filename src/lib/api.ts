@@ -75,6 +75,32 @@ function clearCachedUser() {
   sessionStorage.removeItem(CACHED_USER_KEY)
 }
 
+/**
+ * FastAPI's HTTPException returns a JSON body like {"detail": "..."}.
+ * Without unwrapping this, callers were surfacing the raw JSON string
+ * (e.g. `{"detail":"A document with the same filename..."}`) as the
+ * user-facing error message. This extracts `detail` when present —
+ * including FastAPI's validation-error array shape — and falls back
+ * gracefully for non-JSON or empty bodies.
+ */
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
+  const text = await res.text().catch(() => "")
+  if (!text) return fallback
+  try {
+    const parsed = JSON.parse(text)
+    if (typeof parsed?.detail === "string") return parsed.detail
+    if (Array.isArray(parsed?.detail)) {
+      // FastAPI validation errors: [{ loc, msg, type }, ...]
+      const joined = parsed.detail.map((d: any) => d.msg).filter(Boolean).join("; ")
+      return joined || text
+    }
+    return text
+  } catch {
+    // Not JSON — likely plain text or HTML from a proxy/gateway error.
+    return text
+  }
+}
+
 export async function login(username: string, password: string): Promise<UserRead> {
   const body = new URLSearchParams()
   body.set("username", username)
@@ -150,8 +176,8 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new ApiError(text || `Request failed (${res.status})`, res.status)
+    const message = await extractErrorMessage(res, `Request failed (${res.status})`)
+    throw new ApiError(message, res.status)
   }
 
   return res.json()
@@ -271,15 +297,14 @@ export async function uploadKnowledgeDocument(
   })
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "")
     const status = res.status
-    if (status >= 500) {
-      throw new ApiError(
-        text || `Server error uploading document (${status}). Try again later.`,
-        status
-      )
-    }
-    throw new ApiError(text || `Failed to upload document (${status})`, status)
+    const message = await extractErrorMessage(
+      res,
+      status >= 500
+        ? `Server error uploading document (${status}). Try again later.`
+        : `Failed to upload document (${status})`
+    )
+    throw new ApiError(message, status)
   }
 
   return res.json()
@@ -312,8 +337,8 @@ export async function updateKnowledgeDocument(
     throw new ApiError("Session expired. Please log in again.", 401)
   }
   if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new ApiError(text || `Failed to update document (${res.status})`, res.status)
+    const message = await extractErrorMessage(res, `Failed to update document (${res.status})`)
+    throw new ApiError(message, res.status)
   }
 
   return res.json()
@@ -327,8 +352,7 @@ export async function deleteKnowledgeDocument(id: number): Promise<void> {
   })
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    const message = text || `Failed to delete document (${res.status})`
+    const message = await extractErrorMessage(res, `Failed to delete document (${res.status})`)
     throw new ApiError(message, res.status)
   }
 }
@@ -345,8 +369,8 @@ export async function downloadKnowledgeDocument(id: number): Promise<Blob> {
   })
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new ApiError(text || `Failed to download document (${res.status})`, res.status)
+    const message = await extractErrorMessage(res, `Failed to download document (${res.status})`)
+    throw new ApiError(message, res.status)
   }
 
   return res.blob()
@@ -401,7 +425,8 @@ export async function deleteBank(id: number): Promise<void> {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!res.ok) {
-    throw new ApiError(`Failed to delete bank (${res.status})`, res.status)
+    const message = await extractErrorMessage(res, `Failed to delete bank (${res.status})`)
+    throw new ApiError(message, res.status)
   }
 }
 

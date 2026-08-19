@@ -11,7 +11,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   FileWarning,
-  ArrowLeft
+  ArrowLeft,
+  Loader2
 } from "lucide-react"
 import Link from "next/link"
 import { GlassNavbar } from "@/components/glass-navbar"
@@ -28,6 +29,8 @@ import { FeedbackPopover } from "@/components/feedback-popover"
 // -----------------------------------------------------------------------
 import {
   isBalanceTransferResponse,
+  getApplication,
+  ApiError,
   type FreshLoanResponse,
   type BalanceTransferResponse,
   type BankRecommendation,
@@ -35,11 +38,29 @@ import {
 
 type FeedbackValue = "up" | "down" | null
 
+// sessionStorage keys shared with /apply for the "Update Application" flow
+const EDIT_PAYLOAD_KEY = "eligibilityEditPayload"
+const EDIT_APPLICATION_ID_KEY = "eligibilityEditApplicationId"
+
 /** Format a rupee amount as "₹XX L" / "₹X.XX Cr", matching the design's shorthand style. */
 function formatINR(amount: number): string {
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`
   if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)} L`
   return `₹${amount.toLocaleString("en-IN")}`
+}
+
+/**
+ * Interest rate display helper — prefers the backend's pre-formatted range
+ * string (e.g. "10.25% - 12.99%") since some policies quote a range rather
+ * than a flat rate. Falls back to the single number, then to an em dash.
+ */
+function formatInterestRate(
+  display?: string | null,
+  flat?: number | null
+): string {
+  if (display) return display
+  if (flat != null) return `${flat}%`
+  return "—"
 }
 
 function formatDerivedLabel(key: string): string {
@@ -69,6 +90,10 @@ export default function ResultsPage() {
   const [feedbackText, setFeedbackText] = useState("")
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
 
+  // "Update Application" — fetching the saved payload before navigating to /apply
+  const [isPreparingEdit, setIsPreparingEdit] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("eligibilityResult")
@@ -88,6 +113,9 @@ export default function ResultsPage() {
     [recommendations]
   )
 
+  // "Best rate" is still picked by the numeric low-end (interest_rate), but
+  // displayed using that bank's own range string so it doesn't mismatch
+  // what's shown on its card.
   const bestRateRecommendation = useMemo(() => {
     const withRates = recommendations.filter((r) => r.interest_rate != null)
     if (withRates.length === 0) return null
@@ -103,9 +131,17 @@ export default function ResultsPage() {
     return amounts.length ? Math.max(...amounts) : null
   }, [recommendations])
 
+  // Average across banks. Prefers each bank's range midpoint (min+max)/2
+  // when interest_rate_min/max are available, since interest_rate alone is
+  // just the low end of the range and understates the true average.
   const avgInterestRate = useMemo(() => {
     const rates = recommendations
-      .map((r) => r.interest_rate)
+      .map((r) => {
+        if (r.interest_rate_min != null && r.interest_rate_max != null) {
+          return (r.interest_rate_min + r.interest_rate_max) / 2
+        }
+        return r.interest_rate ?? null
+      })
       .filter((r): r is number => r != null)
     if (!rates.length) return null
     return rates.reduce((sum, r) => sum + r, 0) / rates.length
@@ -152,6 +188,40 @@ export default function ResultsPage() {
       handleClosePopover()
     }, 1400)
   }
+
+  /**
+   * "Update Application" — fetches the full saved application (its original
+   * form payload) from the backend, stashes it in sessionStorage for /apply
+   * to pick up on mount, then navigates there. If there's no application_id
+   * (e.g. the low-level calc was used, or the row failed to save), falls
+   * back to a blank /apply.
+   */
+  const handleUpdateApplication = async () => {
+  setEditError(null)
+
+  if (result?.application_id == null) {
+    router.push("/apply")
+    return
+  }
+
+  setIsPreparingEdit(true)
+  try {
+    const detail = await getApplication(result.application_id)
+    sessionStorage.setItem(EDIT_PAYLOAD_KEY, JSON.stringify(detail.payload))
+    sessionStorage.setItem(EDIT_APPLICATION_ID_KEY, String(detail.id))
+    // `t` makes the URL unique per click, so Next.js's router cache can't
+    // serve back a stale /apply instance whose mount effect already ran.
+    router.push(`/apply?edit=${detail.id}&t=${Date.now()}`)
+  } catch (err) {
+    if (err instanceof ApiError) {
+      setEditError(err.message)
+    } else {
+      setEditError("Couldn't load your saved application. Please try again.")
+    }
+  } finally {
+    setIsPreparingEdit(false)
+  }
+}
 
   // -----------------------------------------------------------------------
   // No data yet (direct nav to /results, or sessionStorage cleared)
@@ -276,13 +346,22 @@ export default function ResultsPage() {
                 <GlassCard className="p-6 h-full flex items-center" glow>
                   <div className="text-left">
                     <p className="text-sm text-muted-foreground mb-1">Best Interest Rate</p>
-                    <p className="text-3xl font-bold text-white">
-                      {bestRateRecommendation?.interest_rate != null ? (
+                    {bestRateRecommendation?.interest_rate_display ? (
+                      // Range string doesn't fit AnimatedCounter (it animates a
+                      // single number), so render it as static text instead.
+                      // Smaller size than the single-number case below, since
+                      // "10.25% - 12.99%" is ~2.5x longer than "10.25%" and
+                      // wraps awkwardly at text-3xl.
+                      <p className="text-xl md:text-2xl font-bold text-white leading-tight whitespace-nowrap">
+                        {bestRateRecommendation.interest_rate_display}
+                      </p>
+                    ) : bestRateRecommendation?.interest_rate != null ? (
+                      <p className="text-3xl font-bold text-white">
                         <AnimatedCounter value={bestRateRecommendation.interest_rate} suffix="%" decimals={2} />
-                      ) : (
-                        "—"
-                      )}
-                    </p>
+                      </p>
+                    ) : (
+                      <p className="text-3xl font-bold text-white">—</p>
+                    )}
                     <p className="text-xs text-[#FF6B35]">{bestRateRecommendation?.bank_name ?? ""}</p>
                   </div>
                 </GlassCard>
@@ -391,17 +470,19 @@ export default function ResultsPage() {
                             </div>
                           </div>
 
-                          {/* Key Metrics — same 4-column layout for every card */}
-                          <div className="grid grid-cols-4 gap-4 py-4 border-y border-white/10 my-4">
+                          {/* Key Metrics — 2x2 grid. min-h reserves consistent height per
+                              cell so a 2-line range (e.g. "10.25% - 12.99%") doesn't throw
+                              off alignment with the single-line cells next to it. */}
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-4 border-y border-white/10 my-4">
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Interest</p>
-                              <p className="text-sm font-semibold text-white">
-                                {bank.interest_rate != null ? `${bank.interest_rate}%` : "—"}
+                              <p className="text-sm font-semibold text-white leading-snug min-h-[2.5rem] flex items-center">
+                                {formatInterestRate(bank.interest_rate_display, bank.interest_rate)}
                               </p>
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Max Amount</p>
-                              <p className="text-sm font-semibold text-white">
+                              <p className="text-sm font-semibold text-white leading-snug min-h-[2.5rem] flex items-center">
                                 {bank.max_amount_display ??
                                   (bank.max_amount != null ? formatINR(bank.max_amount) : "—")}
                               </p>
@@ -533,7 +614,13 @@ export default function ResultsPage() {
                         <ChevronRight className="w-4 h-4 text-[#10B981] mt-0.5 flex-shrink-0" />
                         <span>
                           {topRecommendation.bank_name} is your top match at a {topRecommendation.match_percent}%
-                          fit{topRecommendation.interest_rate != null ? `, offering ${topRecommendation.interest_rate}% interest` : ""}.
+                          fit
+                          {topRecommendation.interest_rate_display
+                            ? `, offering ${topRecommendation.interest_rate_display} interest`
+                            : topRecommendation.interest_rate != null
+                            ? `, offering ${topRecommendation.interest_rate}% interest`
+                            : ""}
+                          .
                         </span>
                       </li>
                     )}
@@ -557,6 +644,10 @@ export default function ResultsPage() {
                     )}
                   </ul>
 
+                  {editError && (
+                    <p className="mt-3 text-sm text-red-400">{editError}</p>
+                  )}
+
                   <div className="mt-4 flex gap-2">
                     <Link href="/dashboard">
                       <MagneticButton variant="primary" size="sm">
@@ -564,11 +655,21 @@ export default function ResultsPage() {
                         <ArrowRight className="w-4 h-4" />
                       </MagneticButton>
                     </Link>
-                    <Link href="/apply">
-                      <MagneticButton variant="secondary" size="sm">
-                        Update Application
-                      </MagneticButton>
-                    </Link>
+                    <MagneticButton
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleUpdateApplication}
+                      disabled={isPreparingEdit}
+                    >
+                      {isPreparingEdit ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Update Application"
+                      )}
+                    </MagneticButton>
                   </div>
                 </div>
               </div>

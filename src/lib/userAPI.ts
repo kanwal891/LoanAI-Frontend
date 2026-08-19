@@ -151,18 +151,33 @@ export interface BankRecommendation {
   is_top_recommendation: boolean
   usp_tagline: string
   match_percent: number // 0-100
+
+  // Interest rate — some policies quote a range rather than a flat number.
+  // Prefer interest_rate_display in the UI; interest_rate is the low end
+  // (kept for back-compat / sorting) and min/max are its raw components.
   interest_rate?: number | null
+  interest_rate_min?: number | null
+  interest_rate_max?: number | null
+  interest_rate_display?: string | null // e.g. "10.25% - 12.99%"
+
+  // Max eligible amount — same range pattern as interest rate.
   max_amount?: number | null
-  max_amount_display?: string | null
+  max_amount_min?: number | null
+  max_amount_max?: number | null
+  max_amount_display?: string | null // e.g. "₹25.1L - ₹26.7L"
+
   tenure_months?: number | null
   monthly_emi?: number | null
   feature_tags: string[]
   policy_card_id: number
   document_id: number
   eligible: boolean
+
   // BT-only
   bt_principal_total?: number | null
   fresh_loan_topup?: number | null
+  fresh_loan_topup_min?: number | null
+  fresh_loan_topup_max?: number | null
 }
 
 export interface FreshLoanBankResult {
@@ -175,13 +190,27 @@ export interface FreshLoanBankResult {
   gates: GateResult[]
   foir_percent?: number | null
   foir_source?: string | null
+
   annual_interest_rate?: number | null
+  annual_interest_rate_min?: number | null
+  annual_interest_rate_max?: number | null
+  interest_rate_display?: string | null // e.g. "10.25% - 12.99%"
+
   tenure_months?: number | null
   max_total_emi?: number | null
   proposed_emi?: number | null
+
   eligible_loan_amount?: number | null
+  eligible_loan_amount_min?: number | null
+  eligible_loan_amount_max?: number | null
+
   max_loan_cap?: number | null
+
   final_eligible_amount?: number | null
+  final_eligible_amount_min?: number | null
+  final_eligible_amount_max?: number | null
+  eligible_amount_display?: string | null // e.g. "₹25.1L - ₹26.7L"
+
   requested_amount_ok?: boolean | null
   detected_products: any[]
 }
@@ -206,17 +235,34 @@ export interface BalanceTransferBankResult {
   gates: GateResult[]
   foir_percent?: number | null
   foir_source?: string | null
+
   annual_interest_rate?: number | null
+  annual_interest_rate_min?: number | null
+  annual_interest_rate_max?: number | null
+  interest_rate_display?: string | null
+
   tenure_months?: number | null
   max_total_emi?: number | null
   current_emi_retained?: number | null
   bt_emi_excluded?: number | null
   proposed_emi?: number | null
+
   eligible_loan_amount?: number | null
+  eligible_loan_amount_min?: number | null
+  eligible_loan_amount_max?: number | null
+
   max_loan_cap?: number | null
+
   final_eligible_amount?: number | null
+  final_eligible_amount_min?: number | null
+  final_eligible_amount_max?: number | null
+  eligible_amount_display?: string | null
+
   bt_principal_total?: number | null
   fresh_loan_topup?: number | null
+  fresh_loan_topup_min?: number | null
+  fresh_loan_topup_max?: number | null
+
   detected_products: any[]
 }
 
@@ -271,6 +317,7 @@ export interface SavedApplicationDetail {
 /**
  * Main entry point for the frontend form → AI Recommendations screen.
  * Backend auto-detects fresh_loan vs balance_transfer from body.case_type.
+ * Creates a new saved application row.
  *
  * POST /eligibility/applications
  */
@@ -281,6 +328,27 @@ export function evaluateLoanApplication(
     "/eligibility/applications",
     {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+/**
+ * Update an existing saved application with new form data. Regenerates
+ * AI recommendations/results and overwrites payload/derived/results on
+ * the same application_id (does not create a new row).
+ *
+ * PUT /eligibility/applications/{id}
+ */
+export function updateApplication(
+  id: number,
+  body: LoanApplicationRequest
+): Promise<FreshLoanResponse | BalanceTransferResponse> {
+  return apiFetch<FreshLoanResponse | BalanceTransferResponse>(
+    `/eligibility/applications/${id}`,
+    {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }

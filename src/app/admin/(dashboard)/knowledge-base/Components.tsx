@@ -48,39 +48,16 @@ import {
   type DocumentFormData,
 } from "./types"
 import type { BankRead, KnowledgeDocumentRead } from "@/lib/api"
+// Define the shape explicitly to keep generics clean
+type ToastStyle = {
+  icon: React.ReactNode
+  accent: string
+  iconBg: string
+  iconColor: string
+  eyebrow: string
+}
 
-// =========================================================================
-// ToastStack — top-right notification stack.
-// warning (amber): common/expected user actions like duplicates or
-//   unsupported files — not alarming failures.
-// success (emerald): completed actions.
-// error (red): something actually failed (extraction, download, delete).
-// info (blue): heads-up messages, e.g. "this will take a few minutes."
-// =========================================================================
-
-// =========================================================================
-// ToastStack — top-right notification stack, styled to match the
-// ValidationMessage card language used elsewhere in the app: a left
-// accent bar, a circular icon badge, and a small eyebrow label above
-// the message. Only the "error" variant shakes on entry — a shake on a
-// success/info toast would read as an error, so it's reserved for
-// genuine failures.
-//
-// warning (amber): common/expected user actions like duplicates or
-//   unsupported files — not alarming failures.
-// success (emerald): completed actions.
-// error (red): something actually failed (extraction, download, delete).
-// info (cyan): heads-up messages. When `progress` is set (used for the
-//   extraction toast), an indeterminate bar replaces the normal timeout
-//   — the toast stays open until the caller dismisses it, since
-//   extraction duration is unpredictable and a fixed timer would either
-//   disappear too early or overstay a fast extraction.
-// =========================================================================
-
-const TOAST_STYLES: Record<
-  ToastState["variant"],
-  { icon: React.ReactNode; accent: string; iconBg: string; iconColor: string; eyebrow: string }
-> = {
+const TOAST_STYLES: Record<ToastState["variant"], ToastStyle> = {
   warning: {
     icon: <AlertTriangle className="h-3.5 w-3.5" />,
     accent: "bg-amber-400/70",
@@ -315,8 +292,12 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
     }, 500)
   }
 
-  // Validates file type (via `accept`) and rejects duplicate files
-  // (same name + size already queued).
+  // Validates file type (via `accept`) and rejects duplicate files already
+  // sitting in this upload queue (same name + size). This is a same-session,
+  // pre-submit convenience check only — it can't see documents already
+  // saved on the backend for this bank/category. That cross-session check
+  // happens in handleSubmit (page.tsx) against the loaded `documents` list,
+  // and is enforced for real by the backend's 409 response either way.
   const onDrop = useCallback(
     (acceptedFiles: File[], fileRejections: FileRejection[]) => {
       if (fileRejections.length > 0) {
@@ -327,7 +308,7 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
       for (const file of acceptedFiles) {
         const isDuplicate = files.some((f) => f.name === file.name && f.size === file.size)
         if (isDuplicate) {
-          showToast("This document is already uploaded.", "warning")
+          showToast("This file is already in your upload queue.", "warning")
           continue
         }
         trulyNewFiles.push(file)

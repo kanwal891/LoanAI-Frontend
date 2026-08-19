@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react"
 import {
-  AlertTriangle,
   FileText,
   Percent,
   Landmark,
@@ -13,6 +12,9 @@ import {
   BookOpen,
   Info,
   ListPlus,
+  Languages,
+  Pencil,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,7 +29,7 @@ interface PolicyDataEditorProps {
 }
 
 type SectionKey =
-  | "review"
+  | "interpretations"
   | "eligibility"
   | "foir"
   | "limits"
@@ -56,7 +58,8 @@ export function PolicyDataEditor({
   onSave,
 }: PolicyDataEditorProps) {
   const [formData, setFormData] = useState<Record<string, any>>(data || {})
-  const [activeSection, setActiveSection] = useState<SectionKey>("review")
+  const [activeSection, setActiveSection] = useState<SectionKey>("interpretations")
+  const [editingIndexes, setEditingIndexes] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     setFormData(data || {})
@@ -103,9 +106,7 @@ export function PolicyDataEditor({
   }
 
   // -------------------------------------------------------------------
-  const validation = obj(formData._validation)
-  const flags: string[] = arr(validation.flags)
-  const needsReview = Boolean(validation.needs_review) || flags.length > 0
+  const interpretations: any[] = arr(formData.interpretations)
 
   const eligibility = obj(formData.eligibility)
   const foir = obj(formData.foir)
@@ -130,8 +131,35 @@ export function PolicyDataEditor({
   const pricingHasData = sectionHasAnyData(pricing) || hasValue(formData.notes)
   const exclusionsHasData = exclusions.length > 0 || documentsRequired.length > 0 || detectedProducts.length > 0
 
+  // Toggle inline edit mode for a single interpretation card
+  const toggleEditing = (index: number) => {
+    setEditingIndexes((prev) => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }
+
+  // Edit the user prompt (original source text)
+  const setInterpretationPrompt = (index: number, value: string) => {
+    const current = interpretations.slice()
+    current[index] = { ...obj(current[index]), sourcePhrase: value }
+    setPath("interpretations", current)
+  }
+
+  // Edit the AI recommendation (suggested interpretation)
+  const setInterpretationText = (index: number, value: string) => {
+    const current = interpretations.slice()
+    current[index] = { ...obj(current[index]), suggestedInterpretation: value }
+    setPath("interpretations", current)
+  }
+
   const sectionsList: { key: SectionKey; label: string; icon: any; badge?: number }[] = [
-    { key: "review", label: "Review Queue", icon: AlertTriangle, badge: flags.length },
+    { key: "interpretations", label: "Interpretations", icon: Languages, badge: interpretations.length || undefined },
     { key: "eligibility", label: "Eligibility Rules", icon: FileText },
     { key: "foir", label: "FOIR & Obligations", icon: Percent },
     { key: "limits", label: "Loan Limits & Tenure", icon: Landmark },
@@ -164,7 +192,7 @@ export function PolicyDataEditor({
                 <span
                   className={cn(
                     "text-[10px] px-1.5 py-0.2 rounded-full border",
-                    sec.key === "review"
+                    sec.key === "interpretations"
                       ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
                       : "bg-slate-500/20 text-slate-300 border-slate-500/30"
                   )}
@@ -178,42 +206,103 @@ export function PolicyDataEditor({
       </div>
 
       <div className="bg-slate-900/60 rounded-xl border border-white/10 p-5 space-y-4 min-w-0">
-        {/* REVIEW QUEUE */}
-        {activeSection === "review" && (
-          <div className="space-y-4 min-w-0">
+        {/* INTERPRETATIONS — ambiguous / Hinglish source text the AI had to interpret.
+            Left-side pencil icon toggles inline editing per card instead of accept/reject. */}
+        {activeSection === "interpretations" && (
+          <div className="space-y-3 min-w-0">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400" /> Extraction Review Flags
+                <Languages className="w-4 h-4 text-sky-400" /> Interpretations
               </h3>
               <span className="text-xs text-slate-400">
-                {flags.length} {flags.length === 1 ? "item" : "items"} flagged
-                {validation.model ? ` · model: ${validation.model}` : ""}
+                {interpretations.length} {interpretations.length === 1 ? "item" : "items"}
               </span>
             </div>
 
-            {flags.length === 0 ? (
-              <div className="flex items-center gap-2 p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-300 text-xs">
-                <Info className="w-4 h-4 shrink-0" />
-                No review flags reported for this extraction.
-                {!readOnly && " Spot-check the other tabs before approving."}
-              </div>
+            {interpretations.length === 0 ? (
+              <EmptyNote text="No ambiguous or Hinglish text needed interpretation for this document." />
             ) : (
               <div className="space-y-3">
-                {flags.map((flag, i) => (
-                  <div key={i} className="p-4 rounded-xl border border-amber-500/40 border-l-4 border-l-amber-400 bg-slate-950/80 space-y-1 min-w-0">
-                    <Label className="text-xs text-slate-400">Flag {i + 1}</Label>
-                    <p className="text-xs text-slate-100 bg-slate-900/90 p-3 rounded-lg border border-white/5 leading-relaxed break-words">
-                      {flag}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
+                {interpretations.map((rawItem, i) => {
+                  const item = obj(rawItem)
+                  const confidence = str(item.confidence)
+                  const confidenceStyle =
+                    confidence === "high"
+                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                      : confidence === "medium"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                      : "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                  const isEditing = editingIndexes.has(i)
 
-            {!readOnly && needsReview && (
-              <div className="flex items-center gap-2 text-xs text-amber-400 pt-1">
-                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                This document is marked as needing manual review before approval.
+                  return (
+                    <div
+                      key={i}
+                      className="p-4 rounded-xl border border-white/10 bg-slate-950/80 flex gap-3 min-w-0"
+                    >
+                      <div className="space-y-3 min-w-0 flex-1">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="text-[10px] font-mono uppercase tracking-wide text-sky-400">
+                            {str(item.targetField) || "unknown field"}
+                          </span>
+                          {confidence && (
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full border", confidenceStyle)}>
+                              {confidence} confidence
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="w-full min-w-0">
+                          <Label className="text-[10px] text-slate-500 uppercase tracking-wide">
+                            User Prompt
+                          </Label>
+                          {isEditing ? (
+                            <Textarea
+                              value={str(item.sourcePhrase)}
+                              onChange={(e) => setInterpretationPrompt(i, e.target.value)}
+                              className="bg-slate-900 border-slate-800 text-xs mt-1.5 min-h-[50px] w-full"
+                            />
+                          ) : (
+                            <p className="text-xs text-slate-300 italic mt-1.5 leading-relaxed break-words bg-slate-900/70 p-2.5 rounded-lg border border-white/5 w-full">
+                              &ldquo;{str(item.sourcePhrase)}&rdquo;
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="w-full min-w-0">
+                          <Label className="text-[10px] text-slate-500 uppercase tracking-wide">
+                            AI Recommendation
+                          </Label>
+                          {isEditing ? (
+                            <Textarea
+                              value={str(item.suggestedInterpretation)}
+                              onChange={(e) => setInterpretationText(i, e.target.value)}
+                              className="bg-slate-900 border-slate-800 text-xs mt-1.5 min-h-[60px] w-full"
+                            />
+                          ) : (
+                            <p className="text-xs text-slate-100 mt-1.5 leading-relaxed break-words bg-slate-900/40 p-2.5 rounded-lg border border-white/5 w-full">
+                              {str(item.suggestedInterpretation)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {!readOnly && (
+                        <button
+                          onClick={() => toggleEditing(i)}
+                          className={cn(
+                            "shrink-0 h-7 w-7 rounded-lg border flex items-center justify-center transition-colors mt-0.5",
+                            isEditing
+                              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white"
+                          )}
+                          title={isEditing ? "Done editing" : "Edit"}
+                        >
+                          {isEditing ? <Check className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                    )
+                  })}
               </div>
             )}
           </div>

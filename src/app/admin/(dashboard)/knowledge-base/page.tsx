@@ -9,6 +9,7 @@ import {
   runExtraction,
   deleteKnowledgeDocument,
   downloadKnowledgeDocument,
+  ApiError,
   type BankRead,
   type DocumentCategory,
   type KnowledgeDocumentRead,
@@ -112,16 +113,27 @@ export default function KnowledgeBasePage() {
     if (!formData.bankId) return setSubmitError("Please select a bank.")
     if (!formData.category) return setSubmitError("Please select a document category.")
 
-    // Guard against uploading a document that's already in the list for
-    // this bank with the same filename — catches the "same file twice"
-    // case even across separate upload sessions, not just the current queue.
+    // Guard against uploading a document that already exists for this
+    // bank + category with the same filename + size. This mirrors the
+    // backend's own duplicate check (bank_id + category + filename +
+    // file_size, scoped to status === "active") so the user gets the
+    // warning immediately instead of round-tripping to the server first.
+    // It only catches what the backend would also catch — the backend
+    // call below remains the source of truth (e.g. if two people upload
+    // at the same time, or this local `documents` list is stale).
     const alreadyExists = documents.some(
       (d) =>
         d.bank_id === Number(formData.bankId) &&
-        d.original_filename.toLowerCase() === selectedFile.name.toLowerCase()
+        d.category === formData.category &&
+        d.status === "active" &&
+        d.original_filename.toLowerCase() === selectedFile.name.toLowerCase() &&
+        d.file_size === selectedFile.size
     )
     if (alreadyExists) {
-      showToast("This document is already uploaded.", "warning")
+      showToast(
+        "This exact file is already uploaded for this bank and category.",
+        "warning"
+      )
       return
     }
 
@@ -143,7 +155,16 @@ export default function KnowledgeBasePage() {
       showToast("Document uploaded successfully.", "success")
       loadDocuments()
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
+      // A 409 here means the backend caught a duplicate our local
+      // pre-check missed (e.g. stale `documents` list, concurrent
+      // upload from another session). Surface it as a toast, same as
+      // the pre-check case, rather than the generic inline form error —
+      // the backend's message already names the conflicting document.
+      if (err instanceof ApiError && err.status === 409) {
+        showToast(err.message, "warning")
+      } else {
+        setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
+      }
     } finally {
       setIsSubmitting(false)
     }

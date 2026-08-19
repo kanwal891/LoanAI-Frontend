@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { ArrowLeft, RefreshCw, FileWarning, Inbox, FileText } from "lucide-react"
+import { ArrowLeft, RefreshCw, FileWarning, Inbox, FileText, Pencil } from "lucide-react"
 import Link from "next/link"
 import { GlassSidebar } from "@/components/glass-sidebar"
 import { GlassCard } from "@/components/glass-card"
@@ -23,6 +23,10 @@ import {
   type FreshLoanResponse,
   type BalanceTransferResponse,
 } from "@/lib/userAPI"
+
+// Must match the keys read by /apply's edit-prefill logic.
+const EDIT_PAYLOAD_KEY = "eligibilityEditPayload"
+const EDIT_APPLICATION_ID_KEY = "eligibilityEditApplicationId"
 
 /** Human label for the raw "fresh_loan" / "balance_transfer" case_type string. */
 function caseTypeLabel(caseType: string): string {
@@ -91,6 +95,8 @@ export default function ApplicationsPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [openingId, setOpeningId] = useState<number | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
 
   const fetchApplications = async () => {
     setIsLoading(true)
@@ -128,6 +134,22 @@ export default function ApplicationsPage() {
     }
   }
 
+  const handleEditApplication = async (id: number) => {
+    setEditError(null)
+    setEditingId(id)
+    try {
+      const detail = await getApplication(id)
+      // Stash the raw form payload + id so /apply's edit-prefill picks it up
+      // on the fast (sessionStorage) path — matches the keys read there.
+      sessionStorage.setItem(EDIT_PAYLOAD_KEY, JSON.stringify(detail.payload))
+      sessionStorage.setItem(EDIT_APPLICATION_ID_KEY, String(detail.id))
+      router.push(`/apply?edit=${detail.id}`)
+    } catch (err) {
+      setEditError(err instanceof ApiError ? err.message : "Failed to open this application for editing.")
+      setEditingId(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#080B14]">
       <GlassSidebar role="applicant" />
@@ -162,6 +184,13 @@ export default function ApplicationsPage() {
           <div className="mb-4 flex items-center gap-2 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
             <FileWarning className="w-5 h-5 flex-shrink-0" />
             <span>{openError}</span>
+          </div>
+        )}
+
+        {editError && (
+          <div className="mb-4 flex items-center gap-2 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+            <FileWarning className="w-5 h-5 flex-shrink-0" />
+            <span>{editError}</span>
           </div>
         )}
 
@@ -206,36 +235,42 @@ export default function ApplicationsPage() {
             <div className="space-y-4">
               {applications.map((app, index) => {
                 const isOpening = openingId === app.id
+                const isEditing = editingId === app.id
+                const isBusy = isOpening || isEditing
                 const initial = (app.applicant_name?.trim()?.[0] ?? "A").toUpperCase()
                 return (
-                  <motion.button
+                  <motion.div
                     key={app.id}
-                    type="button"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    onClick={() => handleOpenApplication(app.id)}
-                    disabled={isOpening}
-                    className="w-full p-4 rounded-xl glass-card flex items-center justify-between text-left hover:bg-white/5 transition-colors disabled:opacity-60"
+                    className="w-full p-4 rounded-xl glass-card flex items-center justify-between gap-4 hover:bg-white/5 transition-colors"
                   >
-                    <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenApplication(app.id)}
+                      disabled={isBusy}
+                      className="flex items-center gap-4 flex-1 min-w-0 text-left disabled:opacity-60"
+                    >
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1B4FBB] to-[#6366F1] flex items-center justify-center text-lg font-bold text-white flex-shrink-0">
                         {initial}
                       </div>
-                      <div>
-                        <h3 className="font-medium text-white">
+                      <div className="min-w-0">
+                        <h3 className="font-medium text-white truncate">
                           {app.applicant_name?.trim() || `Application #${app.id}`}
                         </h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground truncate">
                           {caseTypeLabel(app.case_type)} · {app.banks_evaluated} bank
                           {app.banks_evaluated === 1 ? "" : "s"} evaluated
                         </p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
+                    </button>
+
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="text-right hidden sm:block">
                         <p className="text-xs text-muted-foreground">{formatDate(app.created_at)}</p>
                       </div>
+
                       {isOpening ? (
                         <Spinner size="sm" />
                       ) : (
@@ -245,8 +280,26 @@ export default function ApplicationsPage() {
                           {statusLabel(app.status)}
                         </span>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditApplication(app.id)
+                        }}
+                        disabled={isBusy}
+                        aria-label="Edit application"
+                        title="Edit application"
+                        className="p-2 rounded-lg glass hover:bg-white/10 text-muted-foreground hover:text-white transition-colors disabled:opacity-50 flex-shrink-0"
+                      >
+                        {isEditing ? (
+                          <Spinner size="sm" />
+                        ) : (
+                          <Pencil className="w-4 h-4" />
+                        )}
+                      </button>
                     </div>
-                  </motion.button>
+                  </motion.div>
                 )
               })}
             </div>

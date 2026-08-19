@@ -22,18 +22,20 @@ const yesNo = [
   { value: "no", label: "No" },
 ]
 
-/**
- * Caps a numeric string field at `max` while typing (e.g. can't type "999" into age).
- * Deliberately does NOT force a live minimum — that would make it impossible to type
- * "18" digit by digit (typing "1" would get snapped up to the minimum immediately).
- * The minimum is instead enforced by step validation before moving on.
- */
 function clampMaxNumberString(value: string, max: number): string {
   const stripped = stripNegative(value)
   if (stripped.trim() === "") return stripped
   const n = Number(stripped)
   if (Number.isNaN(n)) return stripped
   return n > max ? String(max) : stripped
+}
+
+// Helper for unique key generation
+function generateUniqueId(): string {
+  if (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
 // =========================================================================
@@ -89,14 +91,14 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
 }
 
 // =========================================================================
-// Step 2 — Loan Details (balance transfer loan list + fresh case fields)
+// Step 2 — Loan Details
 // =========================================================================
 
 export function LoanDetailsStep({ form, update }: StepProps) {
   const isBT = form.caseType === "bt"
 
   const addExistingLoan = () => {
-    update("existingLoans", [...form.existingLoans, emptyExistingLoan(Date.now().toString())])
+    update("existingLoans", [...form.existingLoans, emptyExistingLoan(generateUniqueId())])
   }
 
   const removeExistingLoan = (id: string) => {
@@ -132,7 +134,7 @@ export function LoanDetailsStep({ form, update }: StepProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="space-y-6"
+            className="space-y-6 overflow-hidden"
           >
             {form.existingLoans.map((loan, index) => (
               <motion.div
@@ -146,8 +148,10 @@ export function LoanDetailsStep({ form, update }: StepProps) {
                   <h3 className="font-medium text-white">Loan {index + 1}</h3>
                   {form.existingLoans.length > 1 && (
                     <button
+                      type="button"
                       onClick={() => removeExistingLoan(loan.id)}
                       className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
+                      aria-label={`Delete Loan ${index + 1}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -222,8 +226,9 @@ export function LoanDetailsStep({ form, update }: StepProps) {
             ))}
 
             <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              type="button"
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
               onClick={addExistingLoan}
               className="w-full p-4 rounded-xl border-2 border-dashed border-white/20 hover:border-[#1B4FBB] text-muted-foreground hover:text-white transition-all flex items-center justify-center gap-2"
             >
@@ -237,7 +242,7 @@ export function LoanDetailsStep({ form, update }: StepProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="space-y-6"
+            className="space-y-6 overflow-hidden"
           >
             <div className="grid md:grid-cols-2 gap-6">
               <FloatingSelect
@@ -307,7 +312,6 @@ export function CompanyDetailsStep({ form, update }: StepProps) {
         value={form.salaryCreditType}
         onChange={(v) => update("salaryCreditType", v)}
         icon={<Wallet className="w-5 h-5" />}
-        dropdownClassName="max-h-40"
       />
     </div>
   )
@@ -330,7 +334,7 @@ export function CreditHistoryStep({ form, update }: StepProps) {
           label="CIBIL Score"
           type="number"
           value={form.cibilScore}
-          onChange={(v) => update("cibilScore", clampMaxNumberString(v,900))}
+          onChange={(v) => update("cibilScore", clampMaxNumberString(v, 900))}
           min={300}
           max={900}
           placeholder="300-900"
@@ -372,6 +376,7 @@ export function CreditHistoryStep({ form, update }: StepProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
           >
             <FloatingInput
               label="Date of Settlement / Write Off"
