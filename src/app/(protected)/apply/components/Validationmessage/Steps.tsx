@@ -46,7 +46,6 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-white mb-1">Personal Details</h2>
         <p className="text-sm text-muted-foreground">Tell us about yourself</p>
       </div>
 
@@ -117,9 +116,6 @@ export function LoanDetailsStep({ form, update }: StepProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-white mb-1">
-          {isBT ? "Existing Loan Details" : "Expected Loan Details"}
-        </h2>
         <p className="text-sm text-muted-foreground">
           {isBT
             ? "Enter your current loan information for balance transfer"
@@ -285,7 +281,6 @@ export function CompanyDetailsStep({ form, update }: StepProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-white mb-1">Employment & Company Details</h2>
         <p className="text-sm text-muted-foreground">Tell us about your employment</p>
       </div>
 
@@ -325,7 +320,6 @@ export function CreditHistoryStep({ form, update }: StepProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-white mb-1">Credit Health Analysis</h2>
         <p className="text-sm text-muted-foreground">Your credit history helps us find the best rates</p>
       </div>
 
@@ -399,7 +393,6 @@ export function SalaryBankingStep({ form, update }: StepProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-white mb-1">Salary & Banking Information</h2>
         <p className="text-sm text-muted-foreground">Your income details for accurate recommendations</p>
       </div>
 
