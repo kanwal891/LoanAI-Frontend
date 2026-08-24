@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   User as UserIcon,
@@ -12,15 +12,42 @@ import {
   Sparkles,
 } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { AuroraBackground } from "@/components/aurora-background"
 import { GlassCard } from "@/components/glass-card"
 import { FloatingInput } from "@/components/floating-input"
 import { MagneticButton } from "@/components/magnetic-button"
-import { login, ApiError } from "@/lib/api"
+import {
+  login,
+  getToken,
+  getCurrentUser,
+  clearToken,
+  getTokenExpiryMs,
+  ApiError,
+  type UserRead,
+} from "@/lib/api"
 
+function roleHome(role: string): string {
+  return role === "admin" ? "/admin/dashboard" : "/dashboard"
+}
+function LoginPageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#080B14]">
+      <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+    </div>
+  )
+}
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -28,6 +55,47 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false)
 
   const [errors, setErrors] = useState<{ username?: string; password?: string; form?: string }>({})
+
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function checkExistingSession() {
+      const token = getToken()
+      if (!token) {
+        if (!cancelled) setCheckingSession(false)
+        return
+      }
+
+      const expiryMs = getTokenExpiryMs(token)
+      if (expiryMs !== null && expiryMs <= Date.now()) {
+        // Token's own exp claim says it's dead — don't bother asking the
+        // server, just clear it and show the login form.
+        clearToken()
+        if (!cancelled) setCheckingSession(false)
+        return
+      }
+
+      let user: UserRead
+      try {
+        user = await getCurrentUser()
+      } catch {
+        if (!cancelled) setCheckingSession(false)
+        return
+      }
+
+      if (cancelled) return
+      const from = searchParams.get("from")
+      router.replace(from || roleHome(user.role))
+    }
+
+    checkExistingSession()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const validateForm = () => {
     const newErrors: typeof errors = {}
@@ -46,7 +114,8 @@ export default function LoginPage() {
 
     try {
       const user = await login(username, password)
-      router.push(user.role === "admin" ? "/admin/dashboard" : "/dashboard")
+      const from = searchParams.get("from")
+      router.push(from || roleHome(user.role))
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : "Something went wrong. Please try again."
@@ -56,6 +125,10 @@ export default function LoginPage() {
     // NOTE: no `finally` here — on success we're navigating away, and we
     // deliberately keep isLoading=true (fields locked) until that happens
     // so the user can't edit/resubmit mid-navigation.
+  }
+
+  if (checkingSession) {
+    return <LoginPageFallback />
   }
 
   return (

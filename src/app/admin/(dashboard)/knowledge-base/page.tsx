@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { DeleteConfirmDialog } from "@/components/ui/delete-dialog" // adjust path if different
 import {
   listBanks,
@@ -28,6 +28,15 @@ import {
   ExtractionQueue,
   ExtractionResults,
 } from "./Components"
+
+/** Strip the extension from a filename for use as a suggested document name,
+ *  e.g. "HDFC_Policy_v2.pdf" -> "HDFC_Policy_v2". Files with no extension
+ *  (or a leading-dot dotfile like ".gitignore") are returned unchanged. */
+function fileNameToDocumentName(filename: string): string {
+  const lastDot = filename.lastIndexOf(".")
+  if (lastDot <= 0) return filename
+  return filename.slice(0, lastDot)
+}
 
 export default function KnowledgeBasePage() {
   const [files, setFiles] = useState<UploadedFile[]>([])
@@ -104,23 +113,59 @@ export default function KnowledgeBasePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDocuments])
 
+  // Auto-fill "Document Name" from the dropped file's name (extension
+  // stripped) the moment the file lands in the dropzone. Only fires when
+  // the Document Name field is still empty, so it never overwrites
+  // something the user already typed.
+  useEffect(() => {
+    const leadFile = files[0]
+    if (!leadFile) return
+    setFormData((prev) =>
+      prev.documentName.trim()
+        ? prev
+        : { ...prev, documentName: fileNameToDocumentName(leadFile.name) }
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files[0]?.id])
+
+  // Reset the whole form the moment the queued file is removed/cancelled.
+  // Without this, cancelling a file left bankId/documentName/dates behind
+  // even though there's no longer a document those values apply to — the
+  // form looked "filled in" for nothing. Tracks the previous file count
+  // via a ref so this only fires on an actual 1 -> 0 transition (removal),
+  // not on initial mount or after a successful submit's own reset (which
+  // is a no-op here since formData is already back to initial by then).
+  const prevFilesCountRef = useRef(0)
+  useEffect(() => {
+    const prevCount = prevFilesCountRef.current
+    if (prevCount > 0 && files.length === 0) {
+      setFormData(initialDocumentFormData)
+      setSubmitError(null)
+    }
+    prevFilesCountRef.current = files.length
+  }, [files.length])
+
   const handleSubmit = async (status: "draft" | "active") => {
     const selectedFile = files[0]?.file
     setSubmitError(null)
 
     if (!selectedFile) return setSubmitError("Please upload a document file before submitting.")
-    if (!formData.documentName.trim()) return setSubmitError("Document name is required.")
+
+    const documentName = formData.documentName.trim()
+    const version = formData.version.trim()
+
+    if (!documentName) return setSubmitError("Document name is required.")
     if (!formData.bankId) return setSubmitError("Please select a bank.")
     if (!formData.category) return setSubmitError("Please select a document category.")
+    if (!version) return setSubmitError("Version is required.")
+    if (
+      formData.effectiveDate &&
+      formData.expiryDate &&
+      formData.effectiveDate > formData.expiryDate
+    ) {
+      return setSubmitError("Effective date cannot be after the expiry date.")
+    }
 
-    // Guard against uploading a document that already exists for this
-    // bank + category with the same filename + size. This mirrors the
-    // backend's own duplicate check (bank_id + category + filename +
-    // file_size, scoped to status === "active") so the user gets the
-    // warning immediately instead of round-tripping to the server first.
-    // It only catches what the backend would also catch — the backend
-    // call below remains the source of truth (e.g. if two people upload
-    // at the same time, or this local `documents` list is stale).
     const alreadyExists = documents.some(
       (d) =>
         d.bank_id === Number(formData.bankId) &&
@@ -140,13 +185,13 @@ export default function KnowledgeBasePage() {
     setIsSubmitting(true)
     try {
       await uploadKnowledgeDocument({
-        document_name: formData.documentName,
+        document_name: documentName,
         bank_id: Number(formData.bankId),
         category: formData.category as DocumentCategory,
-        version: formData.version,
+        version,
         effective_date: formData.effectiveDate || undefined,
         expiry_date: formData.expiryDate || undefined,
-        description: formData.description || undefined,
+        description: formData.description.trim() || undefined,
         status,
         file: selectedFile,
       })
@@ -262,6 +307,7 @@ export default function KnowledgeBasePage() {
           isLoadingBanks={isLoadingBanks}
           submitError={submitError}
           isSubmitting={isSubmitting}
+          hasFile={files.length > 0}
           onSubmit={handleSubmit}
         />
       </div>

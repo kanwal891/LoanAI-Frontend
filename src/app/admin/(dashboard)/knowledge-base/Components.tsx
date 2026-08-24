@@ -48,6 +48,7 @@ import {
   type DocumentFormData,
 } from "./types"
 import type { BankRead, KnowledgeDocumentRead } from "@/lib/api"
+
 // Define the shape explicitly to keep generics clean
 type ToastStyle = {
   icon: React.ReactNode
@@ -174,10 +175,6 @@ export function ToastStack({
   )
 }
 
-// =========================================================================
-// Status badges
-// =========================================================================
-
 export function DocStatusBadge({ status }: { status: KnowledgeDocumentRead["status"] }) {
   const isActive = status === "active"
   return (
@@ -240,15 +237,6 @@ export function ExtractionBadge({ status }: { status: KnowledgeDocumentRead["ext
   )
 }
 
-// =========================================================================
-// ExtractionProgressBar — indeterminate bar shown next to the Extract
-// button while a document is extracting. The backend doesn't report real
-// progress percentages for this step, and extraction can take a few
-// minutes, so this is a sliding "still working" indicator rather than a
-// literal 0–100% bar — it tells the user something is actively happening
-// instead of leaving the button spinner as the only signal.
-// =========================================================================
-
 export function ExtractionProgressBar({ active }: { active: boolean }) {
   if (!active) return null
   return (
@@ -261,10 +249,6 @@ export function ExtractionProgressBar({ active }: { active: boolean }) {
     </div>
   )
 }
-
-// =========================================================================
-// UploadDropzone
-// =========================================================================
 
 interface UploadDropzoneProps {
   files: UploadedFile[]
@@ -291,32 +275,27 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
       if (progress >= 100) clearInterval(interval)
     }, 500)
   }
-
-  // Validates file type (via `accept`) and rejects duplicate files already
-  // sitting in this upload queue (same name + size). This is a same-session,
-  // pre-submit convenience check only — it can't see documents already
-  // saved on the backend for this bank/category. That cross-session check
-  // happens in handleSubmit (page.tsx) against the loaded `documents` list,
-  // and is enforced for real by the backend's 409 response either way.
   const onDrop = useCallback(
     (acceptedFiles: File[], fileRejections: FileRejection[]) => {
       if (fileRejections.length > 0) {
         showToast(`Only ${ACCEPTED_TYPES_LABEL} files are supported.`, "warning")
       }
 
-      const trulyNewFiles: File[] = []
-      for (const file of acceptedFiles) {
-        const isDuplicate = files.some((f) => f.name === file.name && f.size === file.size)
-        if (isDuplicate) {
-          showToast("This file is already in your upload queue.", "warning")
-          continue
-        }
-        trulyNewFiles.push(file)
+      if (acceptedFiles.length === 0) return
+
+      if (files.length > 0) {
+        showToast(
+          "Only one document can be uploaded at a time. Remove the current file first.",
+          "warning"
+        )
+        return
+      }
+      const file = acceptedFiles[0]
+      if (acceptedFiles.length > 1) {
+        showToast("Only one file can be uploaded at a time — the rest were ignored.", "warning")
       }
 
-      if (trulyNewFiles.length === 0) return
-
-      const newFiles: UploadedFile[] = trulyNewFiles.map((file) => ({
+      const newFile: UploadedFile = {
         id: Math.random().toString(36).substring(7),
         file,
         name: file.name,
@@ -324,9 +303,9 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
         type: file.type,
         status: "uploading",
         progress: 0,
-      }))
-      setFiles((prev) => [...prev, ...newFiles])
-      newFiles.forEach((file) => simulateUpload(file.id))
+      }
+      setFiles([newFile])
+      simulateUpload(newFile.id)
     },
     [files, showToast, setFiles]
   )
@@ -334,6 +313,7 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: ACCEPTED_FILE_TYPES,
+    multiple: false,
   })
 
   const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id))
@@ -358,7 +338,7 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
           </div>
           <div>
             <p className="text-lg font-medium text-white">
-              {isDragActive ? "Drop files here" : "Drag & drop files here"}
+              {isDragActive ? "Drop file here" : "Drag & drop a file here"}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               or click to browse from your computer
@@ -381,9 +361,7 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
             exit={{ opacity: 0, height: 0 }}
             className="mt-6 space-y-3"
           >
-            <h3 className="text-sm font-medium text-muted-foreground">
-              Uploaded Files ({files.length})
-            </h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Uploaded File</h3>
             {files.map((file) => (
               <motion.div
                 key={file.id}
@@ -424,6 +402,7 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
                     <button
                       onClick={() => removeFile(file.id)}
                       className="rounded-lg p-1 text-muted-foreground hover:bg-white/10 hover:text-white"
+                      title="Remove file"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -449,11 +428,6 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
     </GlassCard>
   )
 }
-
-// =========================================================================
-// DocumentDetailsForm
-// =========================================================================
-
 interface DocumentDetailsFormProps {
   formData: DocumentFormData
   setFormData: React.Dispatch<React.SetStateAction<DocumentFormData>>
@@ -461,6 +435,7 @@ interface DocumentDetailsFormProps {
   isLoadingBanks: boolean
   submitError: string | null
   isSubmitting: boolean
+  hasFile: boolean
   onSubmit: (status: "draft" | "active") => void
 }
 
@@ -471,9 +446,11 @@ export function DocumentDetailsForm({
   isLoadingBanks,
   submitError,
   isSubmitting,
+  hasFile,
   onSubmit,
 }: DocumentDetailsFormProps) {
   const activeBanks = bankList.filter((bank) => bank.status === "active")
+  const submitDisabled = isSubmitting || !hasFile
 
   return (
     <GlassCard className="p-6 h-full">
@@ -596,7 +573,8 @@ export function DocumentDetailsForm({
             type="button"
             className="flex-1 bg-linear-to-r from-primary to-indigo-500"
             onClick={() => onSubmit("active")}
-            disabled={isSubmitting}
+            disabled={submitDisabled}
+            title={!hasFile ? "Upload a file before submitting" : undefined}
           >
             {isSubmitting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -610,7 +588,8 @@ export function DocumentDetailsForm({
             variant="outline"
             className="border-white/10 bg-white/5"
             onClick={() => onSubmit("draft")}
-            disabled={isSubmitting}
+            disabled={submitDisabled}
+            title={!hasFile ? "Upload a file before submitting" : undefined}
           >
             {isSubmitting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -624,11 +603,6 @@ export function DocumentDetailsForm({
     </GlassCard>
   )
 }
-
-// =========================================================================
-// Documents needing extraction
-// =========================================================================
-
 interface ExtractionQueueProps {
   documents: KnowledgeDocumentRead[]
   isLoadingDocs: boolean
@@ -778,11 +752,6 @@ export function ExtractionQueue({
     </GlassCard>
   )
 }
-
-// =========================================================================
-// AI extraction results
-// =========================================================================
-
 interface ExtractionResultsProps {
   documents: KnowledgeDocumentRead[]
 }

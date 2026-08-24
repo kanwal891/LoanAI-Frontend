@@ -21,12 +21,6 @@ class ApiError extends Error {
   }
 }
 const TOKEN_KEY = "access_token"
-// One-shot cache of the user object we already verified during login, so
-// the AuthGuard on the very next page doesn't have to make a second,
-// redundant round-trip to /auth/me right after we just proved the token
-// is good. This is what removed the "hangs forever right after login,
-// works after refresh" race — that second call was landing in the middle
-// of the backend's cold-start window on Render's free tier.
 const CACHED_USER_KEY = "cached_user"
 
 const ALLOWED_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".txt"])
@@ -42,6 +36,23 @@ function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token)
 }
 
+type UnauthorizedListener = () => void
+const unauthorizedListeners = new Set<UnauthorizedListener>()
+
+/** Subscribe to "the current session just became invalid" events. Returns
+ *  an unsubscribe function — call it on cleanup (e.g. in a useEffect). */
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener)
+  return () => {
+    unauthorizedListeners.delete(listener)
+  }
+}
+
+function handleUnauthorized() {
+  clearToken()
+  unauthorizedListeners.forEach((listener) => listener())
+}
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
   clearCachedUser()
@@ -53,11 +64,6 @@ function cacheVerifiedUser(user: UserRead) {
   sessionStorage.setItem(CACHED_USER_KEY, JSON.stringify(user))
 }
 
-/**
- * Consume (read + clear) the cached user, if any. One-shot by design —
- * only the very first AuthGuard check after login should skip the network
- * call; every check after that should validate for real.
- */
 export function consumeCachedUser(): UserRead | null {
   if (typeof window === "undefined") return null
   const raw = sessionStorage.getItem(CACHED_USER_KEY)
@@ -75,14 +81,21 @@ function clearCachedUser() {
   sessionStorage.removeItem(CACHED_USER_KEY)
 }
 
-/**
- * FastAPI's HTTPException returns a JSON body like {"detail": "..."}.
- * Without unwrapping this, callers were surfacing the raw JSON string
- * (e.g. `{"detail":"A document with the same filename..."}`) as the
- * user-facing error message. This extracts `detail` when present —
- * including FastAPI's validation-error array shape — and falls back
- * gracefully for non-JSON or empty bodies.
- */
+export function getTokenExpiryMs(token: string): number | null {
+  try {
+    const payloadB64 = token.split(".")[1]
+    if (!payloadB64) return null
+    // JWTs use base64url; convert to standard base64 before atob().
+    const normalized = payloadB64.replace(/-/g, "+").replace(/_/g, "/")
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=")
+    const payload = JSON.parse(atob(padded))
+    if (typeof payload.exp !== "number") return null
+    return payload.exp * 1000
+  } catch {
+    return null
+  }
+}
+
 async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
   const text = await res.text().catch(() => "")
   if (!text) return fallback
@@ -150,7 +163,10 @@ export async function getCurrentUser(timeoutMs = 15000): Promise<UserRead> {
   }
 
   if (!res.ok) {
-    clearToken()
+    // Any non-OK from /auth/me (401 expired/invalid, 403, etc.) means the
+    // session is dead — this is the one endpoint whose entire purpose is
+    // validating the token, so treat every failure here as unauthorized.
+    handleUnauthorized()
     throw new ApiError("Session expired. Please log in again.", res.status)
   }
 
@@ -171,7 +187,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   })
 
   if (res.status === 401) {
-    clearToken()
+    handleUnauthorized()
     throw new ApiError("Session expired. Please log in again.", 401)
   }
 
@@ -296,6 +312,11 @@ export async function uploadKnowledgeDocument(
     body: formData,
   })
 
+  if (res.status === 401) {
+    handleUnauthorized()
+    throw new ApiError("Session expired. Please log in again.", 401)
+  }
+
   if (!res.ok) {
     const status = res.status
     const message = await extractErrorMessage(
@@ -333,7 +354,7 @@ export async function updateKnowledgeDocument(
   })
 
   if (res.status === 401) {
-    clearToken()
+    handleUnauthorized()
     throw new ApiError("Session expired. Please log in again.", 401)
   }
   if (!res.ok) {
@@ -351,6 +372,11 @@ export async function deleteKnowledgeDocument(id: number): Promise<void> {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
 
+  if (res.status === 401) {
+    handleUnauthorized()
+    throw new ApiError("Session expired. Please log in again.", 401)
+  }
+
   if (!res.ok) {
     const message = await extractErrorMessage(res, `Failed to delete document (${res.status})`)
     throw new ApiError(message, res.status)
@@ -367,6 +393,11 @@ export async function downloadKnowledgeDocument(id: number): Promise<Blob> {
       Authorization: `Bearer ${token}`,
     },
   })
+
+  if (res.status === 401) {
+    handleUnauthorized()
+    throw new ApiError("Session expired. Please log in again.", 401)
+  }
 
   if (!res.ok) {
     const message = await extractErrorMessage(res, `Failed to download document (${res.status})`)
@@ -424,6 +455,12 @@ export async function deleteBank(id: number): Promise<void> {
     method: "DELETE",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
+
+  if (res.status === 401) {
+    handleUnauthorized()
+    throw new ApiError("Session expired. Please log in again.", 401)
+  }
+
   if (!res.ok) {
     const message = await extractErrorMessage(res, `Failed to delete bank (${res.status})`)
     throw new ApiError(message, res.status)
