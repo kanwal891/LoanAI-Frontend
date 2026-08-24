@@ -2,8 +2,10 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { clearToken } from "@/lib/api"
 import {
   LayoutDashboard,
   Database,
@@ -39,8 +41,14 @@ const sidebarItems = [
 ]
 
 export function AdminSidebar() {
+  const router = useRouter()
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+
+  const handleLogout = () => {
+    clearToken()
+    router.replace("/login")
+  }
 
   return (
     <motion.aside
@@ -125,16 +133,16 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 p-3">
-        <Link
-          href="/"
+        <button
+          onClick={handleLogout}
           className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-white/5 hover:text-white",
+            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-white/5 hover:text-white",
             collapsed && "justify-center"
           )}
         >
           <LogOut className="h-5 w-5" />
           {!collapsed && <span>Logout</span>}
-        </Link>
+        </button>
       </div>
     </motion.aside>
   )

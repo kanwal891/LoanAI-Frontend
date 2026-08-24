@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   ArrowLeft,
   Loader2,
@@ -17,12 +18,14 @@ import {
   Sparkles,
   Tag,
   Layers,
+  X,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { PolicyDataEditor } from "@/components/knowledge/policy-data-editor"
+import { SectionLoader } from "@/components/loading" // adjust path to wherever you saved loading.tsx
 import {
   getKnowledgeDocument,
   getExtractionResult,
@@ -32,6 +35,94 @@ import {
   type KnowledgeDocumentRead,
   type ExtractionResultRead,
 } from "@/lib/api"
+
+// -----------------------------------------------------------------------
+// Small dedicated confirm dialog for Approve — same "confirm before a
+// final action" pattern as DeleteConfirmDialog elsewhere in the app, but
+// styled green/positive rather than red/destructive since approving
+// isn't a destructive action.
+// -----------------------------------------------------------------------
+function ApproveConfirmDialog({
+  open,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean
+  loading: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+          onClick={() => !loading && onCancel()}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ type: "spring", damping: 24, stiffness: 300 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border border-emerald-500/20 bg-[#0b1220] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                </div>
+                <h3 className="text-base font-semibold text-white">Approve this extraction?</h3>
+              </div>
+              <button
+                onClick={onCancel}
+                disabled={loading}
+                className="text-muted-foreground hover:text-white transition-colors"
+                aria-label="Cancel"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mt-3 text-sm text-muted-foreground">
+              This locks the extracted data and saves it as the active policy. You won&apos;t be able to
+              edit it afterward — make sure any pending changes are saved first.
+            </p>
+
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-white/10 bg-white/5"
+                onClick={onCancel}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                onClick={onConfirm}
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                )}
+                Yes, Approve
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
 
 export default function ExtractionReviewPage() {
   const params = useParams()
@@ -47,6 +138,14 @@ export default function ExtractionReviewPage() {
   const [rejectReason, setRejectReason] = useState("")
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // Tracks unsaved edits in PolicyDataEditor so Approve can be disabled
+  // until changes are explicitly saved via its own Save Changes button.
+  const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
+
+  // Approve now goes through an explicit confirm step before it fires,
+  // since approving is final and locks the record afterward.
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false)
 
   useEffect(() => {
     if (!documentId) return
@@ -92,6 +191,7 @@ export default function ExtractionReviewPage() {
       )
       setDoc(updatedDoc)
       if (action === "approve") {
+        setShowApproveConfirm(false)
         router.push("/admin/knowledge-base")
       } else {
         setShowRejectInput(false)
@@ -121,12 +221,7 @@ export default function ExtractionReviewPage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin mr-3" />
-        Loading extraction results...
-      </div>
-    )
+    return <SectionLoader icon={Sparkles} label="Loading extraction results…" />
   }
 
   if (loadError || !doc || !result) {
@@ -153,6 +248,13 @@ export default function ExtractionReviewPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-2 sm:px-4">
+      <ApproveConfirmDialog
+        open={showApproveConfirm}
+        loading={isReviewing === "approve"}
+        onConfirm={() => handleReview("approve")}
+        onCancel={() => setShowApproveConfirm(false)}
+      />
+
       {/* Top Header & Navigation */}
       <div>
         <Link
@@ -270,6 +372,7 @@ export default function ExtractionReviewPage() {
                 data={result.policy_card?.extracted_json ?? {}}
                 readOnly={isReviewed}
                 onSave={handleSavePolicyData}
+                onDirtyChange={setHasUnsavedEdits}
               />
             </>
           ) : (
@@ -315,14 +418,11 @@ export default function ExtractionReviewPage() {
                 <Button
                   type="button"
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
-                  onClick={() => handleReview("approve")}
-                  disabled={isReviewing !== null}
+                  onClick={() => setShowApproveConfirm(true)}
+                  disabled={isReviewing !== null || hasUnsavedEdits}
+                  title={hasUnsavedEdits ? "Save your changes before approving" : undefined}
                 >
-                  {isReviewing === "approve" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                  )}
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
                   Approve & Save Policy
                 </Button>
               </div>

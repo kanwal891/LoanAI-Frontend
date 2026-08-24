@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDropzone, type FileRejection } from "react-dropzone"
 import Link from "next/link"
@@ -48,8 +48,8 @@ import {
   type DocumentFormData,
 } from "./types"
 import type { BankRead, KnowledgeDocumentRead } from "@/lib/api"
+import { SectionLoader } from "@/components/loading"
 
-// Define the shape explicitly to keep generics clean
 type ToastStyle = {
   icon: React.ReactNode
   accent: string
@@ -149,14 +149,22 @@ export function ToastStack({
                   <p className="text-sm text-white/90 leading-relaxed">{toast.message}</p>
 
                   {toast.progress && (
-                    <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                      <motion.div
-                        className="h-full w-1/3 rounded-full bg-linear-to-r from-cyan-400 to-primary"
-                        animate={{ x: ["-100%", "320%"] }}
-                        transition={{ duration: 1.3, repeat: Infinity, ease: "easeInOut" }}
-                      />
-                    </div>
-                  )}
+  <div className="mt-2.5 flex items-center gap-[3px] rounded-md border border-cyan-400/40 bg-black/30 px-1 py-1">
+    {Array.from({ length: 16 }).map((_, i) => (
+      <motion.span
+        key={i}
+        className="h-2 w-1 rounded-[1px] bg-cyan-400 shadow-[0_0_5px_rgba(34,211,238,0.8)]"
+        animate={{ opacity: [0.15, 1, 0.15] }}
+        transition={{
+          duration: 1,
+          repeat: Infinity,
+          ease: "easeInOut",
+          delay: i * 0.05,
+        }}
+      />
+    ))}
+  </div>
+)}
                 </div>
 
                 <button
@@ -238,14 +246,123 @@ export function ExtractionBadge({ status }: { status: KnowledgeDocumentRead["ext
 }
 
 export function ExtractionProgressBar({ active }: { active: boolean }) {
-  if (!active) return null
+  const [simulatedProgress, setSimulatedProgress] = useState(0)
+
+  useEffect(() => {
+    if (!active) {
+      setSimulatedProgress(0)
+      return
+    }
+
+    function ToastProgressBar() {
+  const [simulatedProgress, setSimulatedProgress] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSimulatedProgress((prev) => {
+        if (prev >= 90) return prev
+        const remaining = 90 - prev
+        return prev + remaining * 0.04 // slower climb than extraction pill — toasts persist longer
+      })
+    }, 400)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
-    <div className="h-1.5 w-20 overflow-hidden rounded-full bg-white/10">
-      <motion.div
-        className="h-full w-1/2 rounded-full bg-linear-to-r from-primary to-cyan-400"
-        animate={{ x: ["-100%", "220%"] }}
-        transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-      />
+    <div className="mt-2.5 flex items-center gap-2">
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          className="h-full rounded-full bg-linear-to-r from-cyan-400 to-primary"
+          animate={{ width: `${simulatedProgress}%` }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+        />
+      </div>
+      <span className="w-8 shrink-0 text-right text-xs font-medium tabular-nums text-cyan-300">
+        {Math.round(simulatedProgress)}%
+      </span>
+    </div>
+  )
+}
+    
+    // Eases toward 90% and holds — never claims 100% until the real
+    // extraction actually resolves and `active` flips back to false.
+    const interval = setInterval(() => {
+      setSimulatedProgress((prev) => {
+        if (prev >= 90) return prev
+        const remaining = 90 - prev
+        return prev + remaining * 0.06
+      })
+    }, 400)
+    return () => clearInterval(interval)
+  }, [active])
+
+  if (!active) return null
+
+  return (
+    <div className="flex items-center gap-2.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5">
+      <span className="relative flex h-2 w-2 shrink-0">
+        <motion.span
+          className="absolute inline-flex h-full w-full rounded-full bg-cyan-400"
+          animate={{ scale: [1, 2.2], opacity: [0.7, 0] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
+        />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.9)]" />
+      </span>
+      <span className="text-xs font-medium text-cyan-300">Extracting</span>
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          className="h-full rounded-full bg-cyan-400"
+          animate={{ width: `${simulatedProgress}%` }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+        />
+      </div>
+      <span className="w-8 text-xs font-medium tabular-nums text-cyan-300">
+        {Math.round(simulatedProgress)}%
+      </span>
+    </div>
+  )
+}
+const SEGMENT_TONES = {
+  uploading: {
+    fill: "bg-cyan-400",
+    glow: "shadow-[0_0_6px_rgba(34,211,238,0.7)]",
+    border: "border-cyan-400/60",
+  },
+  processing: {
+    fill: "bg-amber-400",
+    glow: "shadow-[0_0_6px_rgba(251,191,36,0.7)]",
+    border: "border-amber-400/60",
+  },
+  ready: {
+    fill: "bg-emerald-400",
+    glow: "shadow-[0_0_6px_rgba(52,211,153,0.7)]",
+    border: "border-emerald-400/60",
+  },
+} as const
+
+export function SegmentedProgressBar({
+  progress,
+  tone = "uploading",
+  segments = 14,
+}: {
+  progress: number
+  tone?: keyof typeof SEGMENT_TONES
+  segments?: number
+}) {
+  const litCount = Math.round((progress / 100) * segments)
+  const { fill, glow, border } = SEGMENT_TONES[tone]
+
+  return (
+    <div className={cn("flex items-center gap-[3px] rounded-md border-2 bg-black/40 p-1", border)}>
+      {Array.from({ length: segments }).map((_, i) => (
+        <motion.span
+          key={i}
+          initial={false}
+          animate={{ opacity: i < litCount ? 1 : 0.15 }}
+          transition={{ duration: 0.2, delay: i * 0.02 }}
+          className={cn("h-3.5 w-1.5 rounded-[1px]", i < litCount ? cn(fill, glow) : "bg-white/10")}
+        />
+      ))}
     </div>
   )
 }
@@ -410,14 +527,10 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
                 </div>
                 {(file.status === "uploading" || file.status === "processing") && (
                   <div className="mt-4">
-                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                      <motion.div
-                        className="h-full rounded-full bg-linear-to-r from-primary to-cyan-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${file.progress}%` }}
-                        transition={{ duration: 0.3 }}
-                      />
-                    </div>
+                    <SegmentedProgressBar
+                      progress={file.progress}
+                      tone={file.status === "processing" ? "processing" : "uploading"}
+                    />
                   </div>
                 )}
               </motion.div>
@@ -535,7 +648,7 @@ export function DocumentDetailsForm({
               type="date"
               value={formData.effectiveDate}
               onChange={(e) => setFormData({ ...formData, effectiveDate: e.target.value })}
-              className="border-white/10 bg-white/5"
+              className="border-white/10 bg-white/5 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
             />
           </div>
 
@@ -546,7 +659,7 @@ export function DocumentDetailsForm({
               type="date"
               value={formData.expiryDate}
               onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-              className="border-white/10 bg-white/5"
+              className="border-white/10 bg-white/5 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
             />
           </div>
         </div>
@@ -660,11 +773,8 @@ export function ExtractionQueue({
       )}
 
       {isLoadingDocs ? (
-        <div className="flex items-center justify-center py-10 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin mr-2" />
-          Loading documents...
-        </div>
-      ) : needsExtractionDocuments.length === 0 ? (
+  <SectionLoader icon={Sparkles} label="Loading documents…" />
+) : needsExtractionDocuments.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
           Nothing pending — every uploaded document has been extracted.
         </p>

@@ -1,5 +1,4 @@
 "use client"
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
@@ -18,6 +17,8 @@ import {
   Sparkles,
   Clock,
   FileWarning,
+  Save,
+  Loader2,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Button } from "@/components/ui/button"
@@ -50,12 +51,18 @@ import {
   deleteKnowledgeDocument,
   downloadKnowledgeDocument,
   listKnowledgeDocuments,
+  updateKnowledgeDocument,
   type KnowledgeDocumentRead,
+  type KnowledgeDocumentUpdateInput,
+  type DocumentCategory,
 } from "@/lib/api"
+// Shared branded loader — see components/loaders.tsx. Adjust the import
+// path above if your project keeps it somewhere else (e.g. components/ui/loaders).
+import { SectionLoader } from "@/components/loading"
 
 const initialDocuments: KnowledgeDocumentRead[] = []
 
-const ITEMS_PER_PAGE = 10
+const ITEMS_PER_PAGE = 5
 
 const statusConfig = {
   active: { label: "Active", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
@@ -66,6 +73,12 @@ const categoryLabels: Record<string, string> = {
   bank_policy: "Bank Policy",
   case_study: "Case Study",
 }
+
+// Reverse lookup so the edit dialog can turn a display label back into the
+// underlying category key when saving.
+const categoryKeyByLabel: Record<string, string> = Object.fromEntries(
+  Object.entries(categoryLabels).map(([key, label]) => [label, key])
+)
 
 // Browsers can only render these inline via a blob URL — everything else
 // (docx, xlsx, etc.) has no built-in viewer and will always force a download
@@ -97,16 +110,17 @@ function friendlyFormatName(contentType: string): string {
 function ExtractionStatusBadge({ status }: { status: KnowledgeDocumentRead["extraction_status"] }) {
   const isExtracted = status === "extracted" || status === "reviewed"
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "inline-flex items-center gap-1 border",
-      )}
-    >
+    <Badge variant="outline" className="inline-flex items-center gap-1 border whitespace-nowrap">
       {isExtracted ? <Sparkles className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
       {isExtracted ? "Extracted" : "Not Extracted"}
     </Badge>
   )
+}
+
+type EditFormState = {
+  document_name: string
+  category: string
+  status: string
 }
 
 export default function DocumentsPageContent() {
@@ -122,6 +136,13 @@ export default function DocumentsPageContent() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+
+  // Edit modal state — replaces the old router.push to a separate edit page.
+  const [editDoc, setEditDoc] = useState<KnowledgeDocumentRead | null>(null)
+  const [editForm, setEditForm] = useState<EditFormState>({ document_name: "", category: "", status: "" })
+  const [isSaving, setIsSaving] = useState(false)
+  const [editSaveError, setEditSaveError] = useState<string | null>(null)
+
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -146,21 +167,12 @@ export default function DocumentsPageContent() {
     }
 
     loadDocuments()
-    // Re-run whenever the query string changes (e.g. ?updated=<timestamp>
-    // appended by the edit/upload pages after a save). Without this
-    // dependency, navigating back here with just a different query param
-    // re-renders this same component instance instead of remounting it,
-    // so an effect with an empty dependency array would never fire again
-    // and the list would keep showing stale data.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.toString()])
 
   const handleViewDocument = async (doc: KnowledgeDocumentRead) => {
     setViewError(null)
     setPreviewNotice(null)
 
-    // Word/Excel files have no in-browser viewer — the browser will force a
-    // download no matter how we open the blob, so don't pretend it's a preview.
     if (!INLINE_VIEWABLE_TYPES.has(doc.content_type)) {
       setPreviewNotice({ fileName: doc.original_filename, format: friendlyFormatName(doc.content_type) })
       return
@@ -209,8 +221,55 @@ export default function DocumentsPageContent() {
     }
   }
 
-  const handleEditDocument = (id: number) => {
-    router.push(`/admin/documents/${id}/edit`)
+  // Opens the edit dialog in place instead of navigating to /admin/documents/[id]/edit.
+  const handleEditDocument = (doc: KnowledgeDocumentRead) => {
+    setEditSaveError(null)
+    setEditDoc(doc)
+    setEditForm({
+      document_name: doc.document_name,
+      category: categoryLabels[doc.category] ?? doc.category,
+      status: doc.status,
+    })
+  }
+
+  const closeEditDialog = () => {
+    if (isSaving) return
+    setEditDoc(null)
+    setEditSaveError(null)
+  }
+
+  useEffect(() => {
+    if (!editDoc) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeEditDialog()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editDoc])
+
+  const handleSaveEdit = async () => {
+    if (!editDoc) return
+    setIsSaving(true)
+    setEditSaveError(null)
+
+    const payload: KnowledgeDocumentUpdateInput = {
+      document_name: editForm.document_name.trim(),
+      category: (categoryKeyByLabel[editForm.category] ?? editForm.category) as DocumentCategory,
+      status: editForm.status as KnowledgeDocumentUpdateInput["status"],
+    }
+
+    try {
+      const updated = await updateKnowledgeDocument(editDoc.id, payload)
+      setDocuments((prev) => prev.map((doc) => (doc.id === editDoc.id ? { ...doc, ...updated } : doc)))
+      setEditDoc(null)
+      showToast("Document updated.")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update document."
+      setEditSaveError(message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const requestDeleteDocument = (id: number) => {
@@ -251,9 +310,6 @@ export default function DocumentsPageContent() {
     })
   }, [documents, searchQuery, statusFilter, categoryFilter])
 
-  // Real pagination — only as many pages as there actually are, and reset
-  // back to page 1 whenever the filtered set changes so you can't get stuck
-  // on a page that no longer has any rows.
   const totalPages = Math.max(1, Math.ceil(filteredDocuments.length / ITEMS_PER_PAGE))
 
   useEffect(() => {
@@ -269,35 +325,26 @@ export default function DocumentsPageContent() {
     return filteredDocuments.slice(start, start + ITEMS_PER_PAGE)
   }, [filteredDocuments, currentPage])
 
-  const pageNumbers = useMemo(() => {
-    // Show at most 5 page buttons centered around the current page instead
-    // of rendering a button for every page when there are many.
-    const maxButtons = 5
-    if (totalPages <= maxButtons) {
-      return Array.from({ length: totalPages }, (_, i) => i + 1)
-    }
-    let start = Math.max(1, currentPage - 2)
-    let end = Math.min(totalPages, start + maxButtons - 1)
-    start = Math.max(1, end - maxButtons + 1)
-    return Array.from({ length: end - start + 1 }, (_, i) => start + i)
-  }, [totalPages, currentPage])
+  const emptyRowCount = Math.max(0, ITEMS_PER_PAGE - paginatedDocuments.length)
+
+
+  const COLUMN_WIDTHS = [26, 16, 13, 7, 13, 10, 10, 5] as const
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Document Library</h1>
-          <p className="text-muted-foreground">
-            Manage and organize all lender policy documents
-          </p>
+          <p className="text-muted-foreground">Manage and organize all lender policy documents</p>
         </div>
-        <Link href="/admin/knowledge-base">
-          <Button className="bg-linear-to-r from-primary to-indigo-500">
-            <FileText className="mr-2 h-4 w-4" />
-            Upload New Document
-          </Button>
-        </Link>
+        <Button
+          className="bg-linear-to-r from-primary to-indigo-500"
+          onClick={() => router.push("/admin/knowledge-base")}
+        >
+          <FileText className="mr-2 h-4 w-4" />
+          Upload New Document
+        </Button>
       </div>
 
       <AnimatePresence>
@@ -332,6 +379,123 @@ export default function DocumentsPageContent() {
         onConfirm={() => deleteConfirmId !== null && handleDeleteDocument(deleteConfirmId)}
         onCancel={() => setDeleteConfirmId(null)}
       />
+
+      <AnimatePresence>
+        {editDoc && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
+            onClick={closeEditDialog}
+            role="presentation"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0a0f1a] p-8 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-doc-title"
+            >
+              <h2 id="edit-doc-title" className="text-xl font-semibold text-white">
+                Edit document
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Update the document's details. Changes save instantly.
+              </p>
+
+              <div className="mt-6 space-y-5">
+                <div className="space-y-1.5">
+                  <label htmlFor="edit-doc-name" className="text-sm text-muted-foreground">
+                    Document name
+                  </label>
+                  <Input
+                    id="edit-doc-name"
+                    value={editForm.document_name}
+                    onChange={(e) => setEditForm((f) => ({ ...f, document_name: e.target.value }))}
+                    className="border-white/10 bg-white/5"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="edit-doc-category" className="text-sm text-muted-foreground">
+                    Category
+                  </label>
+                  <Select
+                    value={editForm.category}
+                    onValueChange={(value) => setEditForm((f) => ({ ...f, category: value }))}
+                  >
+                    <SelectTrigger id="edit-doc-category" className="border-white/10 bg-white/5">
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[#0a0f1a]">
+                      <SelectItem value="Bank Policy">Bank Policy</SelectItem>
+                      <SelectItem value="Case Study">Case Study</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="edit-doc-status" className="text-sm text-muted-foreground">
+                    Status
+                  </label>
+                  <Select
+                    value={editForm.status}
+                    onValueChange={(value) => setEditForm((f) => ({ ...f, status: value }))}
+                  >
+                    <SelectTrigger id="edit-doc-status" className="border-white/10 bg-white/5">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent className="border-white/10 bg-[#0a0f1a]">
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="draft">Draft</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {editSaveError && (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                    {editSaveError}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-8 flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  className="border-white/10 bg-white/5"
+                  onClick={closeEditDialog}
+                  disabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveEdit}
+                  disabled={isSaving || !editForm.document_name.trim()}
+                  className="bg-linear-to-r from-primary to-indigo-500"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save changes
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Filters */}
       <GlassCard className="p-4">
@@ -383,8 +547,8 @@ export default function DocumentsPageContent() {
                 "{previewNotice.fileName}" is a {previewNotice.format}
               </p>
               <p className="mt-0.5 text-indigo-300/90">
-                Browsers can't preview {previewNotice.format.toLowerCase()}s directly — download it
-                and open it in the matching app to view the content.
+                Browsers can't preview {previewNotice.format.toLowerCase()}s directly — download it and open
+                it in the matching app to view the content.
               </p>
             </div>
             <button
@@ -401,35 +565,40 @@ export default function DocumentsPageContent() {
       {/* Documents Table */}
       <GlassCard className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="table-fixed">
+            <colgroup>
+              {COLUMN_WIDTHS.map((w, i) => (
+                <col key={i} style={{ width: `${w}%` }} />
+              ))}
+            </colgroup>
             <TableHeader>
               <TableRow className="border-white/10 hover:bg-transparent">
-                <TableHead className="text-muted-foreground">Document Name</TableHead>
-                <TableHead className="text-muted-foreground">Bank</TableHead>
-                <TableHead className="text-muted-foreground">Category</TableHead>
-                <TableHead className="text-muted-foreground">Version</TableHead>
-                <TableHead className="text-muted-foreground">Upload Date</TableHead>
-                <TableHead className="text-muted-foreground">Status</TableHead>
-                <TableHead className="text-muted-foreground">Extraction</TableHead>
-                <TableHead className="text-right text-muted-foreground">Actions</TableHead>
+                <TableHead className="py-4 text-sm text-muted-foreground">Document Name</TableHead>
+                <TableHead className="py-4 text-sm text-muted-foreground">Bank</TableHead>
+                <TableHead className="py-4 text-sm text-muted-foreground">Category</TableHead>
+                <TableHead className="py-4 text-sm text-muted-foreground">Version</TableHead>
+                <TableHead className="py-4 text-sm text-muted-foreground">Upload Date</TableHead>
+                <TableHead className="py-4 text-sm text-muted-foreground">Status</TableHead>
+                <TableHead className="py-4 text-sm text-muted-foreground">Extraction</TableHead>
+                <TableHead className="py-4 text-right text-sm text-muted-foreground">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow className="border-white/10 hover:bg-transparent">
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                    Loading documents...
+                  <TableCell colSpan={8} className="p-0">
+                    <SectionLoader icon={FileText} label="Loading documents..." />
                   </TableCell>
                 </TableRow>
               ) : loadError ? (
                 <TableRow className="border-white/10 hover:bg-transparent">
-                  <TableCell colSpan={8} className="py-10 text-center text-red-400">
+                  <TableCell colSpan={8} className="py-8 text-center text-red-400">
                     {loadError}
                   </TableCell>
                 </TableRow>
               ) : paginatedDocuments.length === 0 ? (
                 <TableRow className="border-white/10 hover:bg-transparent">
-                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     No documents match your filters.
                   </TableCell>
                 </TableRow>
@@ -439,51 +608,52 @@ export default function DocumentsPageContent() {
                   return (
                     <motion.tr
                       key={doc.id}
-                      initial={{ opacity: 0, y: 10 }}
+                      initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.03 }}
-                      className="border-white/10 transition-colors hover:bg-white/5"
+                      transition={{ delay: index * 0.02, duration: 0.15 }}
+                      className="h-[84px] border-white/10 transition-colors hover:bg-white/5"
                     >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="rounded-lg bg-primary/20 p-2">
-                            <FileText className="h-4 w-4 text-primary" />
+                      <TableCell className="py-5">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="shrink-0 rounded-lg bg-primary/20 p-3">
+                            <FileText className="h-5 w-5 text-primary" />
                           </div>
-                          <div>
-                            <p className="font-medium text-white">{doc.document_name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              by {doc.uploaded_by ?? "Unknown"}
-                            </p>
-                          </div>
+                          <p className="truncate text-base font-medium text-white" title={doc.document_name}>
+                            {doc.document_name}
+                          </p>
                         </div>
                       </TableCell>
-                      <TableCell className="text-white">{doc.bank?.bank_name ?? `Bank ${doc.bank_id}`}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="border-white/20 bg-white/5">
+                      <TableCell className="py-5 text-base text-white">
+                        <span className="block truncate" title={doc.bank?.bank_name ?? `Bank ${doc.bank_id}`}>
+                          {doc.bank?.bank_name ?? `Bank ${doc.bank_id}`}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-5">
+                        <Badge variant="outline" className="border-white/20 bg-white/5 whitespace-nowrap px-3 py-1 text-sm">
                           {categoryLabels[doc.category] ?? doc.category}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-white">v{doc.version}</TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="py-5 text-base text-white">v{doc.version}</TableCell>
+                      <TableCell className="py-5 text-base text-muted-foreground">
                         {new Date(doc.created_at).toLocaleDateString()}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn("border", status.color)}>
+                      <TableCell className="py-5">
+                        <Badge variant="outline" className={cn("border whitespace-nowrap px-3 py-1 text-sm", status.color)}>
                           {status.label}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-5">
                         <ExtractionStatusBadge status={doc.extraction_status} />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="py-5 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-white"
+                              className="h-9 w-9 text-muted-foreground hover:text-white"
                             >
-                              <MoreVertical className="h-4 w-4" />
+                              <MoreVertical className="h-5 w-5" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="border-white/10 bg-[#0a0f1a]">
@@ -494,7 +664,7 @@ export default function DocumentsPageContent() {
                               <Eye className="mr-2 h-4 w-4" />
                               {actionLoadingId === doc.id ? "Opening..." : "View"}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditDocument(doc.id)}>
+                            <DropdownMenuItem onClick={() => handleEditDocument(doc)}>
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
@@ -512,10 +682,7 @@ export default function DocumentsPageContent() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator className="bg-white/10" />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => requestDeleteDocument(doc.id)}
-                            >
+                            <DropdownMenuItem variant="destructive" onClick={() => requestDeleteDocument(doc.id)}>
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete
                             </DropdownMenuItem>
@@ -526,20 +693,30 @@ export default function DocumentsPageContent() {
                   )
                 })
               )}
+
+              {!isLoading &&
+                !loadError &&
+                paginatedDocuments.length > 0 &&
+                Array.from({ length: emptyRowCount }).map((_, i) => (
+                  <TableRow key={`filler-${i}`} className="h-[84px] border-white/10 hover:bg-transparent">
+                    <TableCell colSpan={8} className="py-5">
+                      &nbsp;
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
 
-        {/* Pagination — only renders real pages, and hides entirely when there's nothing to page through */}
         {!isLoading && !loadError && filteredDocuments.length > 0 && (
           <div className="flex flex-col gap-3 border-t border-white/10 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
               Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
-              {Math.min(currentPage * ITEMS_PER_PAGE, filteredDocuments.length)} of{" "}
-              {filteredDocuments.length} documents
+              {Math.min(currentPage * ITEMS_PER_PAGE, filteredDocuments.length)} of {filteredDocuments.length}{" "}
+              documents
             </p>
             {totalPages > 1 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Button
                   variant="outline"
                   size="sm"
@@ -547,28 +724,12 @@ export default function DocumentsPageContent() {
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  Previous
                 </Button>
-                {pageNumbers[0] > 1 && (
-                  <span className="px-1 text-sm text-muted-foreground">…</span>
-                )}
-                {pageNumbers.map((page) => (
-                  <Button
-                    key={page}
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "border-white/10",
-                      page === currentPage ? "bg-primary/30 text-white" : "bg-white/5"
-                    )}
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </Button>
-                ))}
-                {pageNumbers[pageNumbers.length - 1] < totalPages && (
-                  <span className="px-1 text-sm text-muted-foreground">…</span>
-                )}
+                <span className="text-sm text-muted-foreground">
+                  Page {currentPage} of {totalPages}
+                </span>
                 <Button
                   variant="outline"
                   size="sm"
@@ -576,7 +737,8 @@ export default function DocumentsPageContent() {
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  Next
+                  <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
               </div>
             )}

@@ -15,6 +15,8 @@ import {
   Languages,
   Pencil,
   Check,
+  Save,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,7 +27,11 @@ import { cn } from "@/lib/utils"
 interface PolicyDataEditorProps {
   data: Record<string, any>
   readOnly?: boolean
-  onSave?: (updatedData: Record<string, any>) => void
+  onSave?: (updatedData: Record<string, any>) => void | Promise<void>
+  // Fires whenever local edits diverge from the last-saved data, so a
+  // parent (e.g. the review page) can disable "Approve" until changes
+  // are explicitly saved — prevents approving over lost/stale edits.
+  onDirtyChange?: (isDirty: boolean) => void
 }
 
 type SectionKey =
@@ -56,18 +62,49 @@ export function PolicyDataEditor({
   data,
   readOnly = false,
   onSave,
+  onDirtyChange,
 }: PolicyDataEditorProps) {
   const [formData, setFormData] = useState<Record<string, any>>(data || {})
   const [activeSection, setActiveSection] = useState<SectionKey>("interpretations")
   const [editingIndexes, setEditingIndexes] = useState<Set<number>>(new Set())
 
+  // Local-edit tracking, separate from the network save. Editing no
+  // longer writes to the backend on every keystroke — it only flips
+  // this flag, which the "Save Changes" button below clears.
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   useEffect(() => {
     setFormData(data || {})
+    setIsDirty(false)
   }, [data])
 
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty])
+
+  // Local-only update — no network call. Replaces the old `commit`
+  // which called onSave (a network write) on every single edit.
   const commit = (updated: Record<string, any>) => {
     setFormData(updated)
-    if (onSave) onSave(updated)
+    setIsDirty(true)
+    setSaveError(null)
+  }
+
+  const handleSaveChanges = async () => {
+    if (!onSave || isSaving) return
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      await onSave(formData)
+      setIsDirty(false)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save changes")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const setPath = (path: string, value: any) => {
@@ -483,6 +520,42 @@ export function PolicyDataEditor({
           </div>
         )}
       </div>
+
+      {/* SAVE BAR — explicit, separate from Approve. Editing only ever
+          touches local state until this is clicked; Approve (in the
+          parent page) stays a distinct, final, locking action. */}
+      {!readOnly && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3">
+          <div className="text-xs">
+            {isDirty ? (
+              <span className="inline-flex items-center gap-1.5 text-amber-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                Unsaved changes
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-emerald-400">
+                <Check className="h-3.5 w-3.5" />
+                All changes saved
+              </span>
+            )}
+            {saveError && <span className="ml-3 text-red-400">{saveError}</span>}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="bg-linear-to-r from-primary to-indigo-500 w-full sm:w-auto"
+            onClick={handleSaveChanges}
+            disabled={!isDirty || isSaving}
+          >
+            {isSaving ? (
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-3.5 w-3.5" />
+            )}
+            Save Changes
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

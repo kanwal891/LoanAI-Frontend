@@ -12,6 +12,7 @@ import {
   ApiError,
   type UserRead,
 } from "@/lib/api"
+import { PageLoader } from "@/components/loading" // adjust path to your loaders file
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -169,7 +170,7 @@ export function AuthGuard({
   if (status === "checking") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#080B14]">
-        <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        <PageLoader label="Checking your session…" />
       </div>
     )
   }

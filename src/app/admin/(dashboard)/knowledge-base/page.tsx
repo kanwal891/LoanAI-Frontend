@@ -29,9 +29,6 @@ import {
   ExtractionResults,
 } from "./Components"
 
-/** Strip the extension from a filename for use as a suggested document name,
- *  e.g. "HDFC_Policy_v2.pdf" -> "HDFC_Policy_v2". Files with no extension
- *  (or a leading-dot dotfile like ".gitignore") are returned unchanged. */
 function fileNameToDocumentName(filename: string): string {
   const lastDot = filename.lastIndexOf(".")
   if (lastDot <= 0) return filename
