@@ -8,16 +8,14 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   return (
-    <AuthGuard requireRole="admin">
-      <div className="min-h-screen bg-[#01040c]">
-        <AdminSidebar />
-        <div className="pl-64 transition-all duration-300">
-          <AdminHeader />
-          <main className="min-h-[calc(100vh-4rem)] p-6">
-            {children}
-          </main>
-        </div>
+    <div className="min-h-screen bg-[#01040c]">
+      <AdminSidebar />
+      <div className="pl-64 transition-all duration-300">
+        <AdminHeader />
+        <main className="min-h-[calc(100vh-4rem)] p-6">
+          <AuthGuard requireRole="admin">{children}</AuthGuard>
+        </main>
       </div>
-    </AuthGuard>
+    </div>
   )
 }

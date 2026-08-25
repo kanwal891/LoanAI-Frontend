@@ -1,7 +1,8 @@
 "use client"
 
-import { memo, useMemo, useState } from "react"
+import { memo, useEffect, useMemo, useState } from "react"
 import { GlassCard } from "@/components/glass-card"
+import { AlertCircle } from "lucide-react"
 import {
   Area,
   AreaChart,
@@ -16,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { listKnowledgeDocuments, type KnowledgeDocumentRead, type DocumentCategory } from "@/lib/api"
 
 const monthlyAccuracyData = [
   {
@@ -74,10 +76,53 @@ const monthlyAccuracyData = [
   },
 ]
 
-const categoryData = [
-  { name: "Bank Policy", value: 520, color: "#1B4FBB" },
-  { name: "Case Study", value: 320, color: "#06B6D4" },
-]
+// Display labels + chart colors for each backend category value.
+// Keys must match the `DocumentCategory` union from lib/api.
+const CATEGORY_META: Record<DocumentCategory, { label: string; color: string }> = {
+  bank_policy: { label: "Bank Policy", color: "#1B4FBB" },
+  case_study: { label: "Case Study", color: "#06B6D4" },
+}
+
+function useKnowledgeDistribution() {
+  const [documents, setDocuments] = useState<KnowledgeDocumentRead[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const docs = await listKnowledgeDocuments()
+        if (!cancelled) setDocuments(docs)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load documents")
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const categoryData = useMemo(() => {
+    const counts = new Map<DocumentCategory, number>()
+    for (const doc of documents) {
+      counts.set(doc.category, (counts.get(doc.category) ?? 0) + 1)
+    }
+    return (Object.keys(CATEGORY_META) as DocumentCategory[])
+      .map((key) => ({
+        name: CATEGORY_META[key].label,
+        value: counts.get(key) ?? 0,
+        color: CATEGORY_META[key].color,
+      }))
+      .filter((entry) => entry.value > 0)
+  }, [documents])
+
+  return { categoryData, totalDocuments: documents.length, isLoading, error }
+}
 
 interface FeedbackEntry {
   id: string
@@ -236,6 +281,12 @@ const FeedbackCard = memo(function FeedbackCard({ item }: { item: FeedbackEntry 
 
 export function DashboardCharts() {
   const [selectedPoint, setSelectedPoint] = useState(monthlyAccuracyData[0])
+  const {
+    categoryData,
+    totalDocuments,
+    isLoading: isLoadingDistribution,
+    error: distributionError,
+  } = useKnowledgeDistribution()
 
   const actionableFeedback = useMemo(
     () => feedbackHistory.filter((item) => item.reaction === "dislike" && item.comment?.trim()),
@@ -293,28 +344,52 @@ export function DashboardCharts() {
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {/* Category Distribution */}
+        {/* Category Distribution — now live from /knowledge/documents,
+            grouped by the `category` field (bank_policy | case_study). */}
         <GlassCard className="p-6">
-          <h3 className="mb-4 font-semibold text-white">Knowledge Base Distribution</h3>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-semibold text-white">Knowledge Base Distribution</h3>
+            {!isLoadingDistribution && !distributionError && (
+              <span className="text-xs text-muted-foreground">{totalDocuments} total</span>
+            )}
+          </div>
+
+          {distributionError && (
+            <div className="mb-3 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              {distributionError}
+            </div>
+          )}
+
           <div className="h-52">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
+            {isLoadingDistribution ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading…
+              </div>
+            ) : categoryData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                No documents yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
           <div className="mt-4 flex flex-wrap justify-center gap-3">
             {categoryData.map((item) => (
@@ -323,7 +398,9 @@ export function DashboardCharts() {
                   className="h-2.5 w-2.5 rounded-full"
                   style={{ backgroundColor: item.color }}
                 />
-                <span className="text-xs text-muted-foreground">{item.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {item.name} ({item.value})
+                </span>
               </div>
             ))}
           </div>

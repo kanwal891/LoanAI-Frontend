@@ -26,8 +26,10 @@ import {
   updateBank,
   deleteBank,
   getPolicyComparison,
+  listKnowledgeDocuments,
   type BankRead,
   type PolicyComparisonResponse,
+  type KnowledgeDocumentRead,
 } from "@/lib/api"
 
 const BANKS_PER_PAGE = 4
@@ -48,6 +50,11 @@ export default function BankManagementPage() {
   const [bankList, setBankList] = useState<BankRead[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  // Document counts per bank — derived from the full document list, since
+  // BankRead has no count field and there's no dedicated backend endpoint.
+  const [documents, setDocuments] = useState<KnowledgeDocumentRead[]>([])
+  const [isLoadingDocCounts, setIsLoadingDocCounts] = useState(true)
 
   const [bankNameInput, setBankNameInput] = useState("")
   const [editingBankId, setEditingBankId] = useState<number | null>(null)
@@ -70,6 +77,14 @@ export default function BankManagementPage() {
   const comparisonRows = comparison?.rows ?? []
   const banksCompared = comparison?.banks_compared ?? 0
   const editingBank = bankList.find((bank) => bank.id === editingBankId) ?? null
+
+  const docCountByBank = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const doc of documents) {
+      counts.set(doc.bank_id, (counts.get(doc.bank_id) ?? 0) + 1)
+    }
+    return counts
+  }, [documents])
 
   const filteredBanks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -107,6 +122,26 @@ export default function BankManagementPage() {
 
   useEffect(() => {
     loadBanks()
+  }, [])
+
+  // Document counts — fetched independently so a failure here never blocks
+  // the bank table itself; it just falls back to showing nothing extra.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setIsLoadingDocCounts(true)
+      try {
+        const docs = await listKnowledgeDocuments()
+        if (!cancelled) setDocuments(docs)
+      } catch {
+        // Non-critical — silently skip counts on failure.
+      } finally {
+        if (!cancelled) setIsLoadingDocCounts(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -362,17 +397,20 @@ export default function BankManagementPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-2xl border border-white/10">
+              {/* Table now spans the full card width, with columns sized
+                  proportionally so there's no leftover empty space on the
+                  right (previously the table used w-fit + fixed px widths). */}
+              <div className="w-full overflow-hidden rounded-2xl border border-white/10">
                 <table className="w-full table-fixed divide-y divide-white/10 text-left text-sm">
                   <colgroup>
-  <col />
-  <col className="w-36" />
-  <col className="w-[230px]" />
-</colgroup>
+                    <col className="w-[45%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[35%]" />
+                  </colgroup>
                   <thead className="bg-white/[0.03]">
                     <tr className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                       <th className="px-5 py-3.5 font-medium">Bank</th>
-                      <th className="px-5 py-3.5 font-medium text-center">Status</th> 
+                      <th className="px-5 py-3.5 font-medium text-center">Status</th>
                       <th className="px-5 py-3.5 font-medium text-center">Actions</th>
                     </tr>
                   </thead>
@@ -380,18 +418,26 @@ export default function BankManagementPage() {
                     {paginatedBanks.map((bank) => {
                       const isPending = pendingId === bank.id
                       const isActive = bank.status === "active"
+                      const docCount = docCountByBank.get(bank.id) ?? 0
                       return (
                         <tr key={bank.id} className="transition-colors hover:bg-white/[0.03]">
-                          <td className="px-5 py-4 text-center">
+                          <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
                               <div
-                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-xs font-semibold text-white ${tintFor(
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-xs font-semibold text-white ${tintFor(
                                   bank.bank_name
                                 )}`}
                               >
                                 {bank.bank_name.slice(0, 2).toUpperCase()}
                               </div>
-                              <span className="font-medium text-white truncate">{bank.bank_name}</span>
+                              <div className="min-w-0">
+                                <p className="font-medium text-white truncate">{bank.bank_name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {isLoadingDocCounts
+                                    ? "Loading…"
+                                    : `${docCount} ${docCount === 1 ? "document" : "documents"}`}
+                                </p>
+                              </div>
                             </div>
                           </td>
                           <td className="px-5 py-4 text-center">
@@ -447,23 +493,14 @@ export default function BankManagementPage() {
                                 onClick={() => requestDeleteBank(bank)}
                                 disabled={isPending}
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="mr-1.5 h-3 w-3" />
+                                Delete
                               </Button>
                             </div>
                           </td>
                         </tr>
                       )
                     })}
-
-                    {/* Pad short pages with empty rows so the table keeps a
-                        consistent height instead of shrinking to fit. */}
-                    {Array.from({ length: BANKS_PER_PAGE - paginatedBanks.length }).map((_, i) => (
-                      <tr key={`pad-${i}`} aria-hidden="true">
-                        <td className="px-5 py-4" colSpan={3}>
-                          <div className="h-9" />
-                        </td>
-                      </tr>
-                    ))}
                   </tbody>
                 </table>
               </div>

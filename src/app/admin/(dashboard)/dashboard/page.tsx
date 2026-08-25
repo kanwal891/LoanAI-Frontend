@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import {
   FileText,
@@ -8,111 +8,31 @@ import {
   TrendingUp,
   Clock,
   Building2,
-  ArrowUpRight,
-  ArrowDownRight,
   Percent,
   Landmark,
   ThumbsUp,
   ThumbsDown,
   ChevronLeft,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { DashboardCharts } from "@/components/admin/dashboard-charts"
+import { SectionLoader, Skeleton } from "@/components/loading" // adjust path
 import { cn } from "@/lib/utils"
+import {
+  listKnowledgeDocuments,
+  listBanks,
+  getPolicyComparison,
+  type KnowledgeDocumentRead,
+  type BankRead,
+  type PolicyComparisonRow,
+} from "@/lib/api"
+import { listApplications, type SavedApplicationSummary } from "@/lib/userAPI" // adjust path/filename
 
 type CardKey = "Active Policies" | "Loan Applications"
 
-const statsCards = [
-  {
-    title: "Total Documents",
-    value: "1,248",
-    change: "+12%",
-    trend: "up",
-    icon: FileText,
-    color: "from-primary to-indigo-500",
-    description: "Across all lenders",
-  },
-  {
-    title: "Active Policies",
-    value: "847",
-    change: "+8%",
-    trend: "up",
-    icon: CheckCircle,
-    color: "from-emerald-500 to-teal-500",
-    description: "Currently in use",
-  },
-  {
-    title: "Loan Applications",
-    value: "3,412",
-    change: "+15%",
-    trend: "up",
-    icon: TrendingUp,
-    color: "from-cyan-500 to-blue-500",
-    description: "This month",
-  },
-  {
-    title: "Approval Rate",
-    value: "78%",
-    change: "+4%",
-    trend: "up",
-    icon: Clock,
-    color: "from-violet-500 to-purple-500",
-    description: "Across all applications",
-  },
-  {
-    title: "Total Lenders",
-    value: "42",
-    change: "+3",
-    trend: "up",
-    icon: Building2,
-    color: "from-amber-500 to-orange-500",
-    description: "Active partnerships",
-  },
-]
-
-const decisionTrail = [
-  {
-    userInput: "Salary ₹21,000, CIBIL 650, Age 58",
-    aiRecommendation: "SBI may accept with lower LTV",
-    finalDecision: "Rejected",
-    correctness: "Incorrect",
-    reason: "Rejected per SBI's salaried-applicant policy, which caps eligibility at age 58 — applicant did not meet the age threshold.",
-    timestamp: "2026-07-15 14:28",
-  },
-  {
-    userInput: "CIBIL 720, salary ₹35,000, existing loan ₹2L",
-    aiRecommendation: "HDFC is eligible",
-    finalDecision: "Approved",
-    correctness: "Correct",
-    reason: "Approved per HDFC's Personal Loan Eligibility Matrix — meets the minimum ₹25,000 income and 650+ CIBIL requirements, consistent with a similar approved case on 2026-06-30.",
-    timestamp: "2026-07-14 09:12",
-  },
-  {
-    userInput: "No own house, income ₹45,000, CIBIL 690",
-    aiRecommendation: "ICICI likely approve with collateral",
-    finalDecision: "Approved",
-    correctness: "Correct",
-    reason: "Approved per ICICI's FOIR Guidelines, which permit higher-income applicants without owned property when CIBIL exceeds 680 and collateral is provided.",
-    timestamp: "2026-07-12 16:05",
-  },
-]
-interface BankComparisonRow {
-  bank: string
-  foir: number // %
-  rate: number // % p.a.
-}
-
-const bankComparisonData: BankComparisonRow[] = [
-  { bank: "HDFC Bank", foir: 60, rate: 9.5 },
-  { bank: "SBI", foir: 65, rate: 9.2 },
-  { bank: "ICICI Bank", foir: 55, rate: 10.0 },
-  { bank: "Axis Bank", foir: 58, rate: 9.8 },
-  { bank: "Kotak Mahindra Bank", foir: 62, rate: 9.6 },
-  { bank: "Yes Bank", foir: 57, rate: 10.2 },
-  { bank: "IndusInd Bank", foir: 59, rate: 9.9 },
-  { bank: "Punjab National Bank", foir: 63, rate: 9.0 },
-]
+const APPROVED_STATUS_VALUE = "approved"
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -131,22 +51,112 @@ const itemVariants = {
   },
 }
 
-/** Bank Comparison widget — tabbed FOIR / Rate view with ranked bars. */
+interface StatsData {
+  totalDocuments: number
+  activePolicies: number
+  loanApplications: number
+  approvalRatePercent: number | null // null = not enough data to compute
+  totalLenders: number
+}
+
+function useDashboardStats() {
+  const [stats, setStats] = useState<StatsData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const [docs, banks, applications] = await Promise.all([
+          listKnowledgeDocuments(),
+          listBanks(),
+          listApplications(),
+        ])
+        if (cancelled) return
+
+        const approvedCount = applications.filter(
+          (a) => a.status?.toLowerCase() === APPROVED_STATUS_VALUE
+        ).length
+
+        setStats({
+          totalDocuments: docs.length,
+          activePolicies: docs.filter((d) => d.status === "active").length,
+          loanApplications: applications.length,
+          approvalRatePercent:
+            applications.length > 0 ? (approvedCount / applications.length) * 100 : null,
+          totalLenders: banks.filter((b) => b.status === "active").length,
+        })
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Failed to load dashboard stats")
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return { stats, isLoading, error }
+}
+
 function BankComparisonCard() {
   const [metric, setMetric] = useState<"foir" | "rate">("foir")
+  const [rowsData, setRowsData] = useState<PolicyComparisonRow[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const res = await getPolicyComparison(true)
+        if (cancelled) return
+        setRowsData(res.rows)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Failed to load bank comparison")
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const rows = useMemo(() => {
-    const sorted = [...bankComparisonData].sort((a, b) => b[metric] - a[metric])
+    const withMetric = rowsData
+      .map((r) => ({
+        bank: r.bank_name,
+        foir: r.foir,
+        rate: r.roi,
+      }))
+      .filter((r) => r[metric] !== null && r[metric] !== undefined) as {
+      bank: string
+      foir: number
+      rate: number
+    }[]
+
+    const sorted = [...withMetric].sort((a, b) => b[metric] - a[metric])
     const values = sorted.map((r) => r[metric])
     const min = Math.min(...values)
     const max = Math.max(...values)
     return sorted.map((row) => ({
       ...row,
-      // Normalize to a 25–100% bar width so differences stay visible even
-      // when the underlying values are close together (e.g. 9.0–10.2 for rate).
       width: max === min ? 100 : 25 + ((row[metric] - min) / (max - min)) * 75,
     }))
-  }, [metric])
+  }, [rowsData, metric])
 
   const tabs: { key: "foir" | "rate"; label: string; icon: typeof Percent; suffix: string }[] = [
     { key: "foir", label: "FOIR", icon: Percent, suffix: "%" },
@@ -188,46 +198,71 @@ function BankComparisonCard() {
         </div>
       </div>
 
-      <div className="mt-6 space-y-3">
-        {rows.map((row, index) => {
-          const { suffix } = tabs.find((t) => t.key === metric)!
-          return (
-            <div
-              key={row.bank}
-              className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#0b1220] p-3.5"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-xs font-semibold text-muted-foreground">
-                {index + 1}
-              </div>
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15">
-                <Landmark className="h-4 w-4 text-primary" />
-              </div>
-              <div className="w-40 shrink-0 truncate text-sm font-medium text-white">
-                {row.bank}
-              </div>
-              <div className="relative flex-1">
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/5">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${row.width}%` }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
-                    className={cn(
-                      "h-full rounded-full bg-linear-to-r",
-                      metric === "foir"
-                        ? "from-cyan-400 to-blue-500"
-                        : "from-emerald-400 to-teal-500"
-                    )}
-                  />
+      {error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="mt-6 space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-2xl" />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="mt-6 text-sm text-muted-foreground py-6 text-center">
+          No reviewed policy data available for comparison yet.
+        </p>
+      ) : (
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="mt-6 space-y-3"
+        >
+          {rows.map((row, index) => {
+            const { suffix } = tabs.find((t) => t.key === metric)!
+            return (
+              <motion.div
+                key={row.bank}
+                variants={itemVariants}
+                className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#0b1220] p-3.5"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-xs font-semibold text-muted-foreground">
+                  {index + 1}
                 </div>
-              </div>
-              <div className="w-20 shrink-0 text-right font-mono text-sm font-semibold text-white">
-                {row[metric]}
-                {suffix}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15">
+                  <Landmark className="h-4 w-4 text-primary" />
+                </div>
+                <div className="w-40 shrink-0 truncate text-sm font-medium text-white">
+                  {row.bank}
+                </div>
+                <div className="relative flex-1">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/5">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${row.width}%` }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      className={cn(
+                        "h-full rounded-full bg-linear-to-r",
+                        metric === "foir"
+                          ? "from-cyan-400 to-blue-500"
+                          : "from-emerald-400 to-teal-500"
+                      )}
+                    />
+                  </div>
+                </div>
+                <div className="w-20 shrink-0 text-right font-mono text-sm font-semibold text-white">
+                  {row[metric]}
+                  {suffix}
+                </div>
+              </motion.div>
+            )
+          })}
+        </motion.div>
+      )}
     </GlassCard>
   )
 }
@@ -253,7 +288,7 @@ const userActivityLog = [
   { id: 18, timestamp: "06 Jul 2026, 16:30", user: "user6@yopmail.com", action: "liked", response: "Yes Bank offers instant personal loans up to ₹40 lakhs for eligible customers." },
   { id: 19, timestamp: "05 Jul 2026, 12:00", user: "user7@gmail.com", action: "disliked", response: "I do not have enough information to compare all loan offers for your financial profile." },
   { id: 20, timestamp: "05 Jul 2026, 11:30", user: "user7@gmail.com", action: "liked", response: "IndusInd Bank provides multiple credit card options based on your income and credit score." },
-];
+]
 
 const PAGE_SIZE = 5
 
@@ -340,6 +375,7 @@ function UserActivityLog() {
 
 export default function AdminDashboardPage() {
   const [selectedCard, setSelectedCard] = useState<CardKey | null>(null)
+  const { stats, isLoading: isLoadingStats, error: statsError } = useDashboardStats()
 
   const cardDetails: Record<CardKey, { title: string; summary: string; items: string[] }> = {
     "Active Policies": {
@@ -364,6 +400,46 @@ export default function AdminDashboardPage() {
 
   const selectedCardDetail = selectedCard ? cardDetails[selectedCard] : null
 
+  const statsCards = stats
+    ? [
+        {
+          title: "Total Documents",
+          value: stats.totalDocuments.toLocaleString(),
+          icon: FileText,
+          color: "from-primary to-indigo-500",
+          description: "Across all lenders",
+        },
+        {
+          title: "Active Policies",
+          value: stats.activePolicies.toLocaleString(),
+          icon: CheckCircle,
+          color: "from-emerald-500 to-teal-500",
+          description: "Currently in use",
+        },
+        {
+          title: "Loan Applications",
+          value: stats.loanApplications.toLocaleString(),
+          icon: TrendingUp,
+          color: "from-cyan-500 to-blue-500",
+          description: "All time",
+        },
+        {
+          title: "Approval Rate",
+          value: stats.approvalRatePercent !== null ? `${stats.approvalRatePercent.toFixed(0)}%` : "—",
+          icon: Clock,
+          color: "from-violet-500 to-purple-500",
+          description: "Across all applications",
+        },
+        {
+          title: "Total Lenders",
+          value: stats.totalLenders.toLocaleString(),
+          icon: Building2,
+          color: "from-amber-500 to-orange-500",
+          description: "Active partnerships",
+        },
+      ]
+    : []
+
   return (
     <motion.div
       variants={containerVariants}
@@ -379,57 +455,65 @@ export default function AdminDashboardPage() {
         </p>
       </motion.div>
 
-      {/* Stats Grid */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {statsCards.map((stat, index) => {
-          const clickable = stat.title === "Active Policies" || stat.title === "Loan Applications"
-          return (
-            <GlassCard
-              key={stat.title}
-              className={cn(
-                "p-5 transition-all",
-                clickable && "cursor-pointer hover:scale-[1.01] hover:border-white/20"
-              )}
-              hover={clickable}
-              onClick={() => clickable && setSelectedCard(stat.title as CardKey)}
-            >
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">{stat.title}</p>
-                  <p className="text-2xl font-bold text-white">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground">{stat.description}</p>
-                </div>
-                <div className={cn("rounded-xl bg-linear-to-br p-3", stat.color)}>
-                  <stat.icon className="h-5 w-5 text-white" />
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-1">
-                {stat.trend === "up" ? (
-                  <ArrowUpRight className="h-4 w-4 text-emerald-400" />
-                ) : (
-                  <ArrowDownRight className="h-4 w-4 text-red-400" />
-                )}
-                <span
-                  className={cn(
-                    "text-sm font-medium",
-                    stat.trend === "up" ? "text-emerald-400" : "text-red-400"
-                  )}
-                >
-                  {stat.change}
-                </span>
-                <span className="text-xs text-muted-foreground">vs last month</span>
-              </div>
-            </GlassCard>
-          )
-        })}
-      </motion.div>
+      {statsError && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {statsError}
+        </div>
+      )}
 
-      {/* Bank Comparison — FOIR / Rate tabs */}
+      {isLoadingStats ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <GlassCard key={i} className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <Skeleton className="w-10 h-10 rounded-xl" />
+              </div>
+              <Skeleton className="h-7 w-16 mb-2" />
+              <Skeleton className="h-3 w-24" />
+            </GlassCard>
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          variants={containerVariants}
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5"
+        >
+          {statsCards.map((stat) => {
+            const clickable = stat.title === "Active Policies" || stat.title === "Loan Applications"
+            return (
+              <motion.div key={stat.title} variants={itemVariants}>
+                <GlassCard
+                  className={cn(
+                    "p-5 transition-all",
+                    clickable && "cursor-pointer hover:scale-[1.01] hover:border-white/20"
+                  )}
+                  hover={clickable}
+                  onClick={() => clickable && setSelectedCard(stat.title as CardKey)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">{stat.title}</p>
+                      <p className="text-2xl font-bold text-white">{stat.value}</p>
+                      <p className="text-xs text-muted-foreground">{stat.description}</p>
+                    </div>
+                    <div className={cn("rounded-xl bg-linear-to-br p-3", stat.color)}>
+                      <stat.icon className="h-5 w-5 text-white" />
+                    </div>
+                  </div>
+                </GlassCard>
+              </motion.div>
+            )
+          })}
+        </motion.div>
+      )}
+
+      {/* Bank Comparison — FOIR / Rate tabs, now live */}
       <motion.div variants={itemVariants}>
         <BankComparisonCard />
       </motion.div>
 
-      {/* Recommendation Accuracy */}
+      {/* Recommendation Accuracy — STATIC, no backing endpoint yet */}
       <motion.div variants={itemVariants}>
         <GlassCard className="p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -449,19 +533,24 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          >
             {[
               { label: "Total Recommendations", value: "3,148" },
               { label: "Correct Recommendations", value: "2,976" },
               { label: "Incorrect Recommendations", value: "172" },
               { label: "Incorrect %", value: "5.5%" },
             ].map((item) => (
-              <div key={item.label} className="rounded-3xl bg-white/5 p-4">
+              <motion.div key={item.label} variants={itemVariants} className="rounded-3xl bg-white/5 p-4">
                 <p className="text-xs text-muted-foreground">{item.label}</p>
                 <p className="mt-2 text-xl font-semibold text-white">{item.value}</p>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
 
           <div className="mt-6">
             <div className="mb-3 flex items-center justify-between">
@@ -469,9 +558,11 @@ export default function AdminDashboardPage() {
               <span className="text-sm font-semibold text-white">94.5%</span>
             </div>
             <div className="h-4 overflow-hidden rounded-full bg-white/10">
-              <div
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: "94.5%" }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
                 className="h-full rounded-full bg-linear-to-r from-emerald-400 via-lime-400 to-cyan-500"
-                style={{ width: "94.5%" }}
               />
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
@@ -503,16 +594,15 @@ export default function AdminDashboardPage() {
         </GlassCard>
       </motion.div>
 
-    
       {/* Charts */}
       <div className="grid grid-cols-1 gap-6">
         <motion.div variants={itemVariants}>
           <DashboardCharts />
         </motion.div>
-          {/* User Activity Log */}
-      <motion.div variants={itemVariants}>
-        <UserActivityLog />
-      </motion.div>
+        {/* User Activity Log — STATIC, no backing endpoint yet */}
+        <motion.div variants={itemVariants}>
+          <UserActivityLog />
+        </motion.div>
       </div>
     </motion.div>
   )

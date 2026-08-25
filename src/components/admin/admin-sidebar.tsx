@@ -59,34 +59,44 @@ export function AdminSidebar() {
         collapsed ? "w-20" : "w-64"
       )}
     >
-      {/* Logo */}
-      <div className="flex h-16 items-center justify-between border-b border-white/10 px-4">
+      {/* Logo — stacked vertically when collapsed so the icon box and the
+          toggle button each get their own row instead of being squeezed
+          side-by-side into ~48px of width (which shrank the logo icon). */}
+      <div
+        className={cn(
+          "flex items-center border-b border-white/10 transition-all duration-300",
+          collapsed ? "h-24 flex-col justify-center gap-2 px-2 py-3" : "h-16 justify-between px-4"
+        )}
+      >
         {!collapsed && (
-          <Link href="/admin/dashboard" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-linear-to-br from-primary to-indigo-500">
+          <Link href="/admin/dashboard" className="flex items-center gap-3 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary to-indigo-500">
               <Brain className="h-5 w-5 text-white" />
             </div>
-            <div>
+            <div className="min-w-0">
               <span className="text-lg font-semibold text-white">LoanAI</span>
               <span className="ml-1 text-xs text-muted-foreground">Admin</span>
             </div>
           </Link>
         )}
         {collapsed && (
-          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-linear-to-br from-primary to-indigo-500">
+          <Link
+            href="/admin/dashboard"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-primary to-indigo-500"
+          >
             <Brain className="h-5 w-5 text-white" />
-          </div>
+          </Link>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-white"
+          className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-white"
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
       </div>
 
       {/* Navigation */}
-      <nav className="h-[calc(100vh-8rem)] overflow-y-auto px-3 py-4">
+      <nav className="h-[calc(100vh-10.5rem)] overflow-y-auto px-3 py-4">
         {sidebarItems.map((section) => (
           <div key={section.title} className="mb-6">
             {!collapsed && (
@@ -140,7 +150,7 @@ export function AdminSidebar() {
             collapsed && "justify-center"
           )}
         >
-          <LogOut className="h-5 w-5" />
+          <LogOut className="h-5 w-5 shrink-0" />
           {!collapsed && <span>Logout</span>}
         </button>
       </div>

@@ -16,9 +16,9 @@ import {
   RotateCw,
   Sparkles,
   Clock,
-  FileWarning,
   Save,
   Loader2,
+  X,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Button } from "@/components/ui/button"
@@ -80,31 +80,10 @@ const categoryKeyByLabel: Record<string, string> = Object.fromEntries(
   Object.entries(categoryLabels).map(([key, label]) => [label, key])
 )
 
-// Browsers can only render these inline via a blob URL — everything else
-// (docx, xlsx, etc.) has no built-in viewer and will always force a download
-// no matter what the frontend does, so "View" only makes sense for these.
-const INLINE_VIEWABLE_TYPES = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "text/plain",
-])
-
-function friendlyFormatName(contentType: string): string {
-  switch (contentType) {
-    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-      return "Word document"
-    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-      return "Excel spreadsheet"
-    case "application/msword":
-      return "Word document"
-    case "application/vnd.ms-excel":
-      return "Excel spreadsheet"
-    default:
-      return "file"
-  }
+// Only PDFs get an in-page "View" preview — every other format (docx, xlsx,
+// images, etc.) only offers Edit/Download from the row menu.
+function isPdf(doc: KnowledgeDocumentRead) {
+  return doc.content_type === "application/pdf"
 }
 
 function ExtractionStatusBadge({ status }: { status: KnowledgeDocumentRead["extraction_status"] }) {
@@ -131,11 +110,13 @@ export default function DocumentsPageContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [viewError, setViewError] = useState<string | null>(null)
-  const [previewNotice, setPreviewNotice] = useState<{ fileName: string; format: string } | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+
+  // In-page PDF preview modal — replaces the old window.open("_blank") flow.
+  const [pdfPreview, setPdfPreview] = useState<{ doc: KnowledgeDocumentRead; url: string } | null>(null)
 
   // Edit modal state — replaces the old router.push to a separate edit page.
   const [editDoc, setEditDoc] = useState<KnowledgeDocumentRead | null>(null)
@@ -170,38 +151,49 @@ export default function DocumentsPageContent() {
   }, [searchParams.toString()])
 
   const handleViewDocument = async (doc: KnowledgeDocumentRead) => {
+    if (!isPdf(doc)) return // guard in case this is ever called directly for a non-PDF
+
     setViewError(null)
-    setPreviewNotice(null)
-
-    if (!INLINE_VIEWABLE_TYPES.has(doc.content_type)) {
-      setPreviewNotice({ fileName: doc.original_filename, format: friendlyFormatName(doc.content_type) })
-      return
-    }
-
     setActionLoadingId(doc.id)
-    const newWindow = window.open("", "_blank")
-    if (!newWindow) {
-      setViewError("Popup blocked. Please allow popups and try again.")
-      setActionLoadingId(null)
-      return
-    }
 
     try {
       const blob = await downloadKnowledgeDocument(doc.id)
       const url = URL.createObjectURL(blob)
-      newWindow.location.href = url
-      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      setPdfPreview({ doc, url })
     } catch (err) {
-      newWindow.close()
       setViewError(err instanceof Error ? err.message : "Failed to open document.")
     } finally {
       setActionLoadingId(null)
     }
   }
 
+  const closePdfPreview = () => {
+    if (pdfPreview) URL.revokeObjectURL(pdfPreview.url)
+    setPdfPreview(null)
+  }
+
+  // Revoke the blob URL if the preview changes or the component unmounts,
+  // so we don't leak object URLs across repeated opens.
+  useEffect(() => {
+    return () => {
+      if (pdfPreview) URL.revokeObjectURL(pdfPreview.url)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfPreview?.url])
+
+  // Esc closes the PDF preview, same pattern as the edit dialog below.
+  useEffect(() => {
+    if (!pdfPreview) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closePdfPreview()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfPreview])
+
   const handleDownloadDocument = async (doc: KnowledgeDocumentRead) => {
     setViewError(null)
-    setPreviewNotice(null)
     setActionLoadingId(doc.id)
 
     try {
@@ -327,7 +319,6 @@ export default function DocumentsPageContent() {
 
   const emptyRowCount = Math.max(0, ITEMS_PER_PAGE - paginatedDocuments.length)
 
-
   const COLUMN_WIDTHS = [26, 16, 13, 7, 13, 10, 10, 5] as const
 
   return (
@@ -380,6 +371,7 @@ export default function DocumentsPageContent() {
         onCancel={() => setDeleteConfirmId(null)}
       />
 
+      {/* Edit document modal — sidebar (w-64) stays visible/unblurred */}
       <AnimatePresence>
         {editDoc && (
           <motion.div
@@ -387,7 +379,7 @@ export default function DocumentsPageContent() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
+            className="fixed inset-y-0 left-64 right-0 z-50 flex items-center justify-center bg-black/10 p-4 backdrop-blur-lg"
             onClick={closeEditDialog}
             role="presentation"
           >
@@ -497,6 +489,51 @@ export default function DocumentsPageContent() {
         )}
       </AnimatePresence>
 
+      {/* PDF preview modal — in-page, no new tab. Sidebar stays visible too. */}
+      <AnimatePresence>
+        {pdfPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-y-0 left-64 right-0 z-50 flex items-center justify-center bg-black/10 p-4 backdrop-blur-lg"
+            onClick={closePdfPreview}
+            role="presentation"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+              className="flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a0f1a] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Preview of ${pdfPreview.doc.document_name}`}
+            >
+              <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+                <p className="truncate text-sm font-medium text-white" title={pdfPreview.doc.document_name}>
+                  {pdfPreview.doc.document_name}
+                </p>
+                <button
+                  onClick={closePdfPreview}
+                  className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-white"
+                  aria-label="Close preview"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <iframe
+                src={pdfPreview.url}
+                title={pdfPreview.doc.document_name}
+                className="flex-1 bg-white"
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Filters */}
       <GlassCard className="p-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -536,28 +573,6 @@ export default function DocumentsPageContent() {
         {viewError && (
           <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {viewError}
-          </div>
-        )}
-
-        {previewNotice && (
-          <div className="mt-4 flex items-start gap-3 rounded-xl border border-indigo-400/20 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">
-            <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-indigo-300" />
-            <div>
-              <p className="font-medium text-indigo-100">
-                "{previewNotice.fileName}" is a {previewNotice.format}
-              </p>
-              <p className="mt-0.5 text-indigo-300/90">
-                Browsers can't preview {previewNotice.format.toLowerCase()}s directly — download it and open
-                it in the matching app to view the content.
-              </p>
-            </div>
-            <button
-              onClick={() => setPreviewNotice(null)}
-              className="ml-auto shrink-0 rounded-md px-1.5 text-indigo-300/70 transition-colors hover:bg-white/10 hover:text-indigo-100"
-              aria-label="Dismiss"
-            >
-              ×
-            </button>
           </div>
         )}
       </GlassCard>
@@ -657,13 +672,15 @@ export default function DocumentsPageContent() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="border-white/10 bg-[#0a0f1a]">
-                            <DropdownMenuItem
-                              onClick={() => handleViewDocument(doc)}
-                              disabled={actionLoadingId === doc.id}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              {actionLoadingId === doc.id ? "Opening..." : "View"}
-                            </DropdownMenuItem>
+                            {isPdf(doc) && (
+                              <DropdownMenuItem
+                                onClick={() => handleViewDocument(doc)}
+                                disabled={actionLoadingId === doc.id}
+                              >
+                                <Eye className="mr-2 h-4 w-4" />
+                                {actionLoadingId === doc.id ? "Opening..." : "View"}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => handleEditDocument(doc)}>
                               <Edit className="mr-2 h-4 w-4" />
                               Edit

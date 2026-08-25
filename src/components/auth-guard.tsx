@@ -12,7 +12,7 @@ import {
   ApiError,
   type UserRead,
 } from "@/lib/api"
-import { PageLoader } from "@/components/loading" // adjust path to your loaders file
+import { PageLoader } from "@/components/loading" // adjust to your actual loaders path
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -35,11 +35,13 @@ export function AuthGuard({
   const [status, setStatus] = useState<"checking" | "allowed" | "error">("checking")
   const [retryCount, setRetryCount] = useState(0)
 
-  // Redirect target is recomputed on every render from the current
-  // pathname, so both the route-check effect and the unauthorized-event
-  // listener below always send the user to a login URL that remembers
-  // where they actually were, not wherever they happened to be when the
-  // guard first mounted.
+  // Once we've shown "allowed" for the first time, subsequent client-side
+  // navigations (pathname changes) re-validate the token/role silently in
+  // the background instead of flipping back to "checking" — that used to
+  // replace `children` with the full-page loader on every route change,
+  // which unmounted anything rendered inside children (e.g. the sidebar).
+  const hasVerifiedOnceRef = useRef(false)
+
   const redirectToLoginRef = useRef(() => {
     router.replace(`${loginPath}?from=${encodeURIComponent(pathname)}`)
   })
@@ -47,13 +49,6 @@ export function AuthGuard({
     router.replace(`${loginPath}?from=${encodeURIComponent(pathname)}`)
   }
 
-  // Global session-expiry listener. This is what makes logout happen the
-  // moment ANY API call anywhere in the app discovers a 401 — e.g. the
-  // user clicks Delete on a document with a dead token, that call's own
-  // catch block shows an error toast as before, but this listener (fired
-  // from inside lib/api.ts's handleUnauthorized) redirects to /login in
-  // the same tick, instead of leaving them stranded on the current page
-  // until their next navigation re-triggers the route-check effect below.
   useEffect(() => {
     const unsubscribe = onUnauthorized(() => {
       redirectToLoginRef.current()
@@ -62,22 +57,14 @@ export function AuthGuard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Proactive expiry: decode the token's own `exp` claim (no network call)
-  // and schedule a timer to log the user out at that exact moment, even
-  // if they never trigger a request that would otherwise discover the
-  // 401. Re-scheduled whenever the token itself changes (login/logout/
-  // route change), and capped at ~24 days because setTimeout silently
-  // overflows/fires immediately past the 32-bit signed int limit
-  // (~24.8 days) — a token with a longer lifetime just gets re-checked
-  // periodically instead of scheduled in one shot.
   useEffect(() => {
     const token = getToken()
     if (!token) return
 
     const expiryMs = getTokenExpiryMs(token)
-    if (expiryMs === null) return // not a decodable JWT — nothing to schedule
+    if (expiryMs === null) return
 
-    const MAX_TIMEOUT_MS = 24 * 24 * 60 * 60 * 1000 // ~24 days, safely under the int32 cap
+    const MAX_TIMEOUT_MS = 24 * 24 * 60 * 60 * 1000
     const msUntilExpiry = expiryMs - Date.now()
 
     if (msUntilExpiry <= 0) {
@@ -88,14 +75,9 @@ export function AuthGuard({
     const delay = Math.min(msUntilExpiry, MAX_TIMEOUT_MS)
     const timer = setTimeout(() => {
       if (msUntilExpiry <= MAX_TIMEOUT_MS) {
-        // We've reached the real expiry moment.
         clearToken()
         redirectToLoginRef.current()
       }
-      // Otherwise this was just a checkpoint before a very long-lived
-      // token's real expiry — the effect re-runs on next render/route
-      // change and reschedules from wherever we are now. In practice
-      // access tokens are short-lived, so this branch rarely matters.
     }, delay)
 
     return () => clearTimeout(timer)
@@ -104,7 +86,14 @@ export function AuthGuard({
 
   useEffect(() => {
     let cancelled = false
-    setStatus("checking")
+
+    // Only show the full-page "checking" state the first time this guard
+    // verifies a session. On later pathname changes within the same
+    // mounted layout, we still re-verify (below) but don't blank out
+    // children while doing so.
+    if (!hasVerifiedOnceRef.current) {
+      setStatus("checking")
+    }
 
     async function check() {
       const token = getToken()
@@ -113,8 +102,6 @@ export function AuthGuard({
         return
       }
 
-      // Even before hitting the network, catch a token that's already
-      // expired by its own `exp` claim — avoids a doomed round-trip.
       const expiryMs = getTokenExpiryMs(token)
       if (expiryMs !== null && expiryMs <= Date.now()) {
         clearToken()
@@ -128,7 +115,10 @@ export function AuthGuard({
           if (!cancelled) router.replace(fallbackPath)
           return
         }
-        if (!cancelled) setStatus("allowed")
+        if (!cancelled) {
+          hasVerifiedOnceRef.current = true
+          setStatus("allowed")
+        }
         return
       }
 
@@ -137,18 +127,13 @@ export function AuthGuard({
         user = await getCurrentUser()
       } catch (err) {
         if (cancelled) return
-        // A network/timeout error (status 0) means we couldn't reach the
-        // server — the token might still be perfectly valid, so don't log
-        // the user out over it. Show a retry instead of hanging forever.
         if (err instanceof ApiError && err.status === 0) {
-          setStatus("error")
+          // Only surface the "couldn't reach server" screen on the initial
+          // check — a transient blip on a later background re-check
+          // shouldn't kick the user out of the page they're already on.
+          if (!hasVerifiedOnceRef.current) setStatus("error")
           return
         }
-        // Anything else (401, etc.) means the session really is invalid.
-        // getCurrentUser() already called handleUnauthorized() internally,
-        // which cleared the token and fired the onUnauthorized listener
-        // above — that listener will redirect. Nothing further to do here
-        // except stop showing the spinner.
         return
       }
 
@@ -157,7 +142,10 @@ export function AuthGuard({
         return
       }
 
-      if (!cancelled) setStatus("allowed")
+      if (!cancelled) {
+        hasVerifiedOnceRef.current = true
+        setStatus("allowed")
+      }
     }
 
     check()
@@ -169,7 +157,7 @@ export function AuthGuard({
 
   if (status === "checking") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#080B14]">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <PageLoader label="Checking your session…" />
       </div>
     )
@@ -177,7 +165,7 @@ export function AuthGuard({
 
   if (status === "error") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#080B14] px-6 text-center">
+      <div className="flex flex-col items-center justify-center gap-4 min-h-[60vh] px-6 text-center">
         <p className="text-white font-medium">Couldn't reach the server</p>
         <p className="text-sm text-muted-foreground max-w-sm">
           This can happen if the server is waking up from idle. Try again in a few seconds.

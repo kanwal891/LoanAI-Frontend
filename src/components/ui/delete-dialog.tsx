@@ -36,15 +36,13 @@ export function DeleteConfirmDialog({
   return (
     <AlertDialog open={open} onOpenChange={(v) => !v && !loading && onCancel()}>
       <AlertDialogContent
-        className={[
-          // Center in viewport instead of pinning to a corner
-          "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
-          "w-[calc(100%-2rem)] max-w-sm",
-          // Match the app's glass-card language
-          "rounded-3xl border border-white/10 bg-[#0a0f1a]/95 p-6",
-          "shadow-2xl shadow-black/50 backdrop-blur-xl",
-        ].join(" ")}
-      >
+  className={[
+    "fixed left-[calc(50%+8rem)] top-1/2 -translate-x-1/2 -translate-y-1/2",
+    "w-[calc(100%-2rem)] max-w-lg",
+    "rounded-3xl border border-white/10 bg-[#0a0f1a]/95 p-6",
+    "shadow-2xl shadow-black/50 backdrop-blur-xl",
+  ].join(" ")}
+>
         <button
           onClick={() => !loading && onCancel()}
           disabled={loading}

@@ -36,12 +36,6 @@ import {
   type ExtractionResultRead,
 } from "@/lib/api"
 
-// -----------------------------------------------------------------------
-// Small dedicated confirm dialog for Approve — same "confirm before a
-// final action" pattern as DeleteConfirmDialog elsewhere in the app, but
-// styled green/positive rather than red/destructive since approving
-// isn't a destructive action.
-// -----------------------------------------------------------------------
 function ApproveConfirmDialog({
   open,
   loading,
@@ -60,7 +54,7 @@ function ApproveConfirmDialog({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+          className="fixed inset-y-0 left-64 right-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-lg px-4"
           onClick={() => !loading && onCancel()}
         >
           <motion.div
@@ -69,52 +63,57 @@ function ApproveConfirmDialog({
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
             transition={{ type: "spring", damping: 24, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-2xl border border-emerald-500/20 bg-[#0b1220] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+            className="relative w-[calc(100%-2rem)] max-w-lg rounded-3xl border border-white/10 bg-[#0a0f1a]/95 p-6 shadow-2xl shadow-black/50 backdrop-blur-xl"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                </div>
-                <h3 className="text-base font-semibold text-white">Approve this extraction?</h3>
-              </div>
-              <button
-                onClick={onCancel}
-                disabled={loading}
-                className="text-muted-foreground hover:text-white transition-colors"
-                aria-label="Cancel"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <button
+              onClick={onCancel}
+              disabled={loading}
+              className="absolute right-4 top-4 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/20">
+              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
             </div>
 
-            <p className="mt-3 text-sm text-muted-foreground">
+            <h3 className="mt-4 text-base font-semibold text-white">
+              Approve this extraction?
+            </h3>
+
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
               This locks the extracted data and saves it as the active policy. You won&apos;t be able to
               edit it afterward — make sure any pending changes are saved first.
             </p>
 
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <div className="mt-6 flex flex-row justify-end gap-2">
               <Button
-                type="button"
                 variant="outline"
-                className="border-white/10 bg-white/5"
-                onClick={onCancel}
+                size="sm"
                 disabled={loading}
+                onClick={() => !loading && onCancel()}
               >
                 Cancel
               </Button>
+
               <Button
-                type="button"
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
-                onClick={onConfirm}
+                size="sm"
                 disabled={loading}
+                onClick={onConfirm}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
               >
                 {loading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Approving
+                  </span>
                 ) : (
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Yes, Approve
+                  </span>
                 )}
-                Yes, Approve
               </Button>
             </div>
           </motion.div>

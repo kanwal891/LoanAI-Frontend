@@ -1,3 +1,4 @@
+// Components.tsx
 "use client"
 
 import { useCallback, useState, useEffect } from "react"
@@ -23,6 +24,7 @@ import {
   Trash2,
   Eye,
   Info,
+  Lock,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Button } from "@/components/ui/button"
@@ -183,6 +185,87 @@ export function ToastStack({
   )
 }
 
+/**
+ * Generic confirmation modal — kept for reuse elsewhere (e.g. delete
+ * confirmations that need this exact styling). No longer used for the
+ * bank/document-name mismatch, which now surfaces as a simple toast
+ * instead of a blocking "upload anyway" dialog.
+ */
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  loading = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean
+  title: string
+  description: string
+  confirmLabel?: string
+  cancelLabel?: string
+  loading?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
+          onClick={() => !loading && onCancel()}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ type: "spring", damping: 24, stiffness: 300 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border border-amber-500/25 bg-[#0a0f1a] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+          >
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-300">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <div>
+                <h3 className="font-semibold text-white">{title}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-white/10 bg-white/5"
+                onClick={onCancel}
+                disabled={loading}
+              >
+                {cancelLabel}
+              </Button>
+              <Button
+                type="button"
+                className="bg-linear-to-r from-primary to-indigo-500"
+                onClick={onConfirm}
+                disabled={loading}
+              >
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {confirmLabel}
+              </Button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+
 export function DocStatusBadge({ status }: { status: KnowledgeDocumentRead["status"] }) {
   const isActive = status === "active"
   return (
@@ -254,36 +337,6 @@ export function ExtractionProgressBar({ active }: { active: boolean }) {
       return
     }
 
-    function ToastProgressBar() {
-  const [simulatedProgress, setSimulatedProgress] = useState(0)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSimulatedProgress((prev) => {
-        if (prev >= 90) return prev
-        const remaining = 90 - prev
-        return prev + remaining * 0.04 // slower climb than extraction pill — toasts persist longer
-      })
-    }, 400)
-    return () => clearInterval(interval)
-  }, [])
-
-  return (
-    <div className="mt-2.5 flex items-center gap-2">
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-        <motion.div
-          className="h-full rounded-full bg-linear-to-r from-cyan-400 to-primary"
-          animate={{ width: `${simulatedProgress}%` }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-        />
-      </div>
-      <span className="w-8 shrink-0 text-right text-xs font-medium tabular-nums text-cyan-300">
-        {Math.round(simulatedProgress)}%
-      </span>
-    </div>
-  )
-}
-    
     // Eases toward 90% and holds — never claims 100% until the real
     // extraction actually resolves and `active` flips back to false.
     const interval = setInterval(() => {
@@ -322,6 +375,7 @@ export function ExtractionProgressBar({ active }: { active: boolean }) {
     </div>
   )
 }
+
 const SEGMENT_TONES = {
   uploading: {
     fill: "bg-cyan-400",
@@ -371,9 +425,10 @@ interface UploadDropzoneProps {
   files: UploadedFile[]
   setFiles: React.Dispatch<React.SetStateAction<UploadedFile[]>>
   showToast: (message: string, variant?: ToastState["variant"]) => void
+  disabled?: boolean
 }
 
-export function UploadDropzone({ files, setFiles, showToast }: UploadDropzoneProps) {
+export function UploadDropzone({ files, setFiles, showToast, disabled = false }: UploadDropzoneProps) {
   const simulateUpload = (fileId: string) => {
     let progress = 0
     const interval = setInterval(() => {
@@ -394,6 +449,8 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
   }
   const onDrop = useCallback(
     (acceptedFiles: File[], fileRejections: FileRejection[]) => {
+      if (disabled) return
+
       if (fileRejections.length > 0) {
         showToast(`Only ${ACCEPTED_TYPES_LABEL} files are supported.`, "warning")
       }
@@ -424,28 +481,40 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
       setFiles([newFile])
       simulateUpload(newFile.id)
     },
-    [files, showToast, setFiles]
+    [files, showToast, setFiles, disabled]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: ACCEPTED_FILE_TYPES,
     multiple: false,
+    disabled,
   })
 
   const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id))
 
   return (
     <GlassCard className="p-6 h-full">
-      <h2 className="mb-4 text-lg font-semibold text-white">Document Upload</h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">Document Upload</h2>
+        {disabled && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="h-3 w-3" />
+            Locked during extraction
+          </span>
+        )}
+      </div>
 
       <div
         {...getRootProps()}
         className={cn(
-          "relative cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all",
-          isDragActive
+          "relative rounded-xl border-2 border-dashed p-8 text-center transition-all",
+          disabled
+            ? "cursor-not-allowed opacity-50 border-white/10"
+            : "cursor-pointer",
+          !disabled && isDragActive
             ? "border-primary bg-primary/10"
-            : "border-white/20 hover:border-primary/50 hover:bg-white/5"
+            : !disabled && "border-white/20 hover:border-primary/50 hover:bg-white/5"
         )}
       >
         <input {...getInputProps()} />
@@ -517,8 +586,9 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
                       </span>
                     )}
                     <button
-                      onClick={() => removeFile(file.id)}
-                      className="rounded-lg p-1 text-muted-foreground hover:bg-white/10 hover:text-white"
+                      onClick={() => !disabled && removeFile(file.id)}
+                      disabled={disabled}
+                      className="rounded-lg p-1 text-muted-foreground hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
                       title="Remove file"
                     >
                       <X className="h-4 w-4" />
@@ -541,6 +611,7 @@ export function UploadDropzone({ files, setFiles, showToast }: UploadDropzonePro
     </GlassCard>
   )
 }
+
 interface DocumentDetailsFormProps {
   formData: DocumentFormData
   setFormData: React.Dispatch<React.SetStateAction<DocumentFormData>>
@@ -550,6 +621,8 @@ interface DocumentDetailsFormProps {
   isSubmitting: boolean
   hasFile: boolean
   onSubmit: (status: "draft" | "active") => void
+  formResetKey: number
+  disabled?: boolean
 }
 
 export function DocumentDetailsForm({
@@ -561,161 +634,183 @@ export function DocumentDetailsForm({
   isSubmitting,
   hasFile,
   onSubmit,
+  formResetKey,
+  disabled = false,
 }: DocumentDetailsFormProps) {
   const activeBanks = bankList.filter((bank) => bank.status === "active")
-  const submitDisabled = isSubmitting || !hasFile
+  const submitDisabled = isSubmitting || !hasFile || disabled
 
   return (
     <GlassCard className="p-6 h-full">
-      <h2 className="mb-4 text-lg font-semibold text-white">Document Details</h2>
-
-      <form className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="documentName">Document Name</Label>
-            <Input
-              id="documentName"
-              placeholder="Enter document name"
-              value={formData.documentName}
-              onChange={(e) => setFormData({ ...formData, documentName: e.target.value })}
-              className="border-white/10 bg-white/5"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="bankName">Bank Name</Label>
-            <Select
-              value={formData.bankId || undefined}
-              onValueChange={(value) => setFormData({ ...formData, bankId: value })}
-            >
-              <SelectTrigger className="border-white/10 bg-white/5">
-                <SelectValue placeholder={isLoadingBanks ? "Loading banks..." : "Select bank"} />
-              </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[#0a0f1a]">
-                {isLoadingBanks ? (
-                  <SelectItem value="loading" disabled>
-                    Loading banks...
-                  </SelectItem>
-                ) : activeBanks.length > 0 ? (
-                  activeBanks.map((bank) => (
-                    <SelectItem key={bank.id} value={String(bank.id)}>
-                      {bank.bank_name}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="no-active" disabled>
-                    No active banks available
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <Select
-              value={formData.category}
-              onValueChange={(value) => setFormData({ ...formData, category: value })}
-            >
-              <SelectTrigger className="border-white/10 bg-white/5">
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent className="border-white/10 bg-[#0a0f1a]">
-                {categories.map((cat) => (
-                  <SelectItem key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="version">Version Number</Label>
-            <Input
-              id="version"
-              placeholder="1.0"
-              value={formData.version}
-              onChange={(e) => setFormData({ ...formData, version: e.target.value })}
-              className="border-white/10 bg-white/5"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="effectiveDate">Effective Date</Label>
-            <Input
-              id="effectiveDate"
-              type="date"
-              value={formData.effectiveDate}
-              onChange={(e) => setFormData({ ...formData, effectiveDate: e.target.value })}
-              className="border-white/10 bg-white/5 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="expiryDate">Expiry Date</Label>
-            <Input
-              id="expiryDate"
-              type="date"
-              value={formData.expiryDate}
-              onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-              className="border-white/10 bg-white/5 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="description">Description</Label>
-          <Textarea
-            id="description"
-            placeholder="Enter document description"
-            value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            className="min-h-24 border-white/10 bg-white/5"
-          />
-        </div>
-
-        {submitError && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {submitError}
-          </div>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">Document Details</h2>
+        {disabled && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="h-3 w-3" />
+            Locked during extraction
+          </span>
         )}
+      </div>
 
-        <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-          <Button
-            type="button"
-            className="flex-1 bg-linear-to-r from-primary to-indigo-500"
-            onClick={() => onSubmit("active")}
-            disabled={submitDisabled}
-            title={!hasFile ? "Upload a file before submitting" : undefined}
-          >
-            {isSubmitting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="mr-2 h-4 w-4" />
-            )}
-            Upload Document
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="border-white/10 bg-white/5"
-            onClick={() => onSubmit("draft")}
-            disabled={submitDisabled}
-            title={!hasFile ? "Upload a file before submitting" : undefined}
-          >
-            {isSubmitting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Save Draft
-          </Button>
-        </div>
-      </form>
+      <fieldset disabled={disabled} className="space-y-4 disabled:opacity-50">
+        <form className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Field 1: Document Name */}
+            <div className="space-y-2">
+              <Label htmlFor="documentName">Document Name</Label>
+              <Input
+                id="documentName"
+                placeholder="Enter document name"
+                value={formData.documentName}
+                onChange={(e) => setFormData({ ...formData, documentName: e.target.value })}
+                className="border-white/10 bg-white/5"
+              />
+            </div>
+
+            {/* Field 2: Bank Name (Now 1/2 width, side-by-side with Document Name) */}
+            <div className="space-y-2">
+              <Label htmlFor="bankName">Bank Name</Label>
+              <Select
+                key={`bank-select-${formResetKey}`}
+                value={formData.bankId || undefined}
+                onValueChange={(value) => setFormData({ ...formData, bankId: value })}
+              >
+                <SelectTrigger className="w-full border-white/10 bg-white/5">
+                  <SelectValue placeholder={isLoadingBanks ? "Loading banks..." : "Select bank"} />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-[#0a0f1a]">
+                  {isLoadingBanks ? (
+                    <SelectItem value="loading" disabled>
+                      Loading banks...
+                    </SelectItem>
+                  ) : activeBanks.length > 0 ? (
+                    activeBanks.map((bank) => (
+                      <SelectItem key={bank.id} value={String(bank.id)}>
+                        {bank.bank_name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-active" disabled>
+                      No active banks available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Field 3: Category */}
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Select
+                key={`category-select-${formResetKey}`}
+                value={formData.category}
+                onValueChange={(value) => setFormData({ ...formData, category: value })}
+              >
+                <SelectTrigger className="w-full border-white/10 bg-white/5">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent className="border-white/10 bg-[#0a0f1a]">
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Field 4: Version Number */}
+            <div className="space-y-2">
+              <Label htmlFor="version">Version Number</Label>
+              <Input
+                id="version"
+                placeholder="1.0"
+                value={formData.version}
+                onChange={(e) => setFormData({ ...formData, version: e.target.value })}
+                className="border-white/10 bg-white/5"
+              />
+            </div>
+
+            {/* Field 5: Effective Date */}
+            <div className="space-y-2">
+              <Label htmlFor="effectiveDate">Effective Date</Label>
+              <Input
+                id="effectiveDate"
+                type="date"
+                value={formData.effectiveDate}
+                onChange={(e) => setFormData({ ...formData, effectiveDate: e.target.value })}
+                className="border-white/10 bg-white/5 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              />
+            </div>
+
+            {/* Field 6: Expiry Date */}
+            <div className="space-y-2">
+              <Label htmlFor="expiryDate">Expiry Date</Label>
+              <Input
+                id="expiryDate"
+                type="date"
+                value={formData.expiryDate}
+                onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                className="border-white/10 bg-white/5 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:hover:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Description (Spans full width across both columns) */}
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              placeholder="Enter document description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="min-h-24 border-white/10 bg-white/5"
+            />
+          </div>
+
+          {submitError && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {submitError}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 pt-4 sm:flex-row">
+            <Button
+              type="button"
+              className="flex-1 bg-linear-to-r from-primary to-indigo-500"
+              onClick={() => onSubmit("active")}
+              disabled={submitDisabled}
+              title={!hasFile ? "Upload a file before submitting" : undefined}
+            >
+              {isSubmitting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              Upload Document
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-white/10 bg-white/5"
+              onClick={() => onSubmit("draft")}
+              disabled={submitDisabled}
+              title={!hasFile ? "Upload a file before submitting" : undefined}
+            >
+              {isSubmitting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Save Draft
+            </Button>
+          </div>
+        </form>
+      </fieldset>
     </GlassCard>
   )
 }
+
 interface ExtractionQueueProps {
   documents: KnowledgeDocumentRead[]
   isLoadingDocs: boolean
@@ -727,7 +822,11 @@ interface ExtractionQueueProps {
   onExtract: (doc: KnowledgeDocumentRead) => void
   onDownload: (doc: KnowledgeDocumentRead) => void
   onDeleteRequest: (doc: KnowledgeDocumentRead) => void
+  isExtractionActive: boolean
+  showToast: (message: string, variant?: ToastState["variant"]) => void
 }
+
+const EXTRACTION_BUSY_MESSAGE = "Extraction in progress — please wait for it to finish."
 
 export function ExtractionQueue({
   documents,
@@ -740,6 +839,8 @@ export function ExtractionQueue({
   onExtract,
   onDownload,
   onDeleteRequest,
+  isExtractionActive,
+  showToast,
 }: ExtractionQueueProps) {
   const needsExtractionDocuments = documents.filter(
     (doc) => doc.extraction_status === "pending" || doc.extraction_status === "failed"
@@ -758,7 +859,13 @@ export function ExtractionQueue({
           variant="outline"
           size="sm"
           className="border-white/10 bg-white/5"
-          onClick={onRefresh}
+          onClick={() => {
+            if (isExtractionActive) {
+              showToast(EXTRACTION_BUSY_MESSAGE, "warning")
+              return
+            }
+            onRefresh()
+          }}
           disabled={isLoadingDocs}
         >
           <RefreshCw className={cn("h-3.5 w-3.5", isLoadingDocs && "animate-spin")} />
@@ -773,8 +880,8 @@ export function ExtractionQueue({
       )}
 
       {isLoadingDocs ? (
-  <SectionLoader icon={Sparkles} label="Loading documents…" />
-) : needsExtractionDocuments.length === 0 ? (
+        <SectionLoader icon={Sparkles} label="Loading documents…" />
+      ) : needsExtractionDocuments.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
           Nothing pending — every uploaded document has been extracted.
         </p>
@@ -783,11 +890,17 @@ export function ExtractionQueue({
           {needsExtractionDocuments.map((doc) => {
             const isExtracting = extractingId === doc.id || doc.extraction_status === "extracting"
             const isDeletingThis = isDeleting && deleteTargetId === doc.id
+            // Every OTHER document's buttons are also disabled while any
+            // one extraction is in flight — not just this row's own.
+            const blockThisRow = isExtractionActive && !isExtracting
 
             return (
               <div
                 key={doc.id}
-                className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+                className={cn(
+                  "flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between transition-opacity",
+                  blockThisRow && "opacity-50"
+                )}
               >
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="rounded-lg bg-primary/20 p-2 shrink-0">
@@ -817,7 +930,13 @@ export function ExtractionQueue({
                       type="button"
                       size="sm"
                       className="bg-linear-to-r from-primary to-indigo-500"
-                      onClick={() => onExtract(doc)}
+                      onClick={() => {
+                        if (blockThisRow) {
+                          showToast(EXTRACTION_BUSY_MESSAGE, "warning")
+                          return
+                        }
+                        onExtract(doc)
+                      }}
                       disabled={isExtracting}
                     >
                       {isExtracting ? (
@@ -832,7 +951,13 @@ export function ExtractionQueue({
                       size="sm"
                       variant="outline"
                       className="border-white/10 bg-white/5 px-2"
-                      onClick={() => onDownload(doc)}
+                      onClick={() => {
+                        if (blockThisRow) {
+                          showToast(EXTRACTION_BUSY_MESSAGE, "warning")
+                          return
+                        }
+                        onDownload(doc)
+                      }}
                       title="Download original file"
                     >
                       <Download className="h-3.5 w-3.5" />
@@ -842,7 +967,13 @@ export function ExtractionQueue({
                       size="sm"
                       variant="outline"
                       className="border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10 px-2"
-                      onClick={() => onDeleteRequest(doc)}
+                      onClick={() => {
+                        if (blockThisRow) {
+                          showToast(EXTRACTION_BUSY_MESSAGE, "warning")
+                          return
+                        }
+                        onDeleteRequest(doc)
+                      }}
                       disabled={isDeletingThis}
                       title="Delete document"
                     >
@@ -862,11 +993,14 @@ export function ExtractionQueue({
     </GlassCard>
   )
 }
+
 interface ExtractionResultsProps {
   documents: KnowledgeDocumentRead[]
+  isExtractionActive: boolean
+  showToast: (message: string, variant?: ToastState["variant"]) => void
 }
 
-export function ExtractionResults({ documents }: ExtractionResultsProps) {
+export function ExtractionResults({ documents, isExtractionActive, showToast }: ExtractionResultsProps) {
   const hasResultsDocuments = documents.filter(
     (doc) => doc.extraction_status === "extracted" || doc.extraction_status === "reviewed"
   )
@@ -914,7 +1048,16 @@ export function ExtractionResults({ documents }: ExtractionResultsProps) {
                 </div>
               </div>
 
-              <Link href={`/admin/knowledge-base/${doc.id}/review`} className="shrink-0">
+              <Link
+                href={`/admin/knowledge-base/${doc.id}/review`}
+                className="shrink-0"
+                onClick={(e) => {
+                  if (isExtractionActive) {
+                    e.preventDefault()
+                    showToast("Extraction in progress — please wait for it to finish.", "warning")
+                  }
+                }}
+              >
                 <Button
                   type="button"
                   size="sm"

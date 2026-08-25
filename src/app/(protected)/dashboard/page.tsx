@@ -24,6 +24,7 @@ import { SectionLoader } from "@/components/loading"
 
 import {
   listApplications,
+  getApplication,
   ApiError,
   type SavedApplicationSummary,
 } from "@/lib/userAPI"
@@ -58,10 +59,38 @@ function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ")
 }
 
+function creditStatusLabel(score: number): string {
+  if (score >= 750) return "Excellent"
+  if (score >= 700) return "Good"
+  if (score >= 650) return "Fair"
+  if (score > 0) return "Poor"
+  return "Unknown"
+}
+
+function creditStatusColor(score: number): string {
+  if (score >= 750) return "text-[#10B981]"
+  if (score >= 700) return "text-[#6366F1]"
+  if (score >= 650) return "text-[#FF6B35]"
+  return "text-muted-foreground"
+}
+
+interface CreditSnapshot {
+  cibilScore: number | null
+  eligibilityScore: number | null
+  updatedAt: string | null
+}
+
 export default function DashboardPage() {
   const [applications, setApplications] = useState<SavedApplicationSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  const [snapshot, setSnapshot] = useState<CreditSnapshot>({
+    cibilScore: null,
+    eligibilityScore: null,
+    updatedAt: null,
+  })
+  const [snapshotLoading, setSnapshotLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -70,10 +99,53 @@ export default function DashboardPage() {
       setLoadError(null)
       try {
         const rows = await listApplications()
-        if (!cancelled) setApplications(rows)
+        if (cancelled) return
+        setApplications(rows)
+
+        // Pull the credit snapshot from the most recent application, if any.
+        if (rows.length > 0) {
+          const mostRecent = [...rows].sort((a, b) => {
+            const at = a.updated_at ?? a.created_at ?? ""
+            const bt = b.updated_at ?? b.created_at ?? ""
+            return bt.localeCompare(at)
+          })[0]
+
+          setSnapshotLoading(true)
+          try {
+            const detail = await getApplication(mostRecent.id)
+            if (cancelled) return
+
+            const cibilScore: number | null =
+              detail.payload?.credit_history?.cibil_score ?? null
+
+            const matchPercents = (detail.recommendations ?? [])
+              .map((r) => r.match_percent)
+              .filter((v): v is number => typeof v === "number")
+
+            const eligibilityScore =
+              matchPercents.length > 0
+                ? Math.round(
+                    matchPercents.reduce((sum, v) => sum + v, 0) / matchPercents.length
+                  )
+                : null
+
+            setSnapshot({
+              cibilScore,
+              eligibilityScore,
+              updatedAt: detail.updated_at ?? detail.created_at ?? null,
+            })
+          } catch {
+            if (!cancelled) setSnapshot({ cibilScore: null, eligibilityScore: null, updatedAt: null })
+          } finally {
+            if (!cancelled) setSnapshotLoading(false)
+          }
+        } else {
+          setSnapshotLoading(false)
+        }
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof ApiError ? err.message : "Failed to load applications.")
+          setSnapshotLoading(false)
         }
       } finally {
         if (!cancelled) setIsLoading(false)
@@ -89,6 +161,9 @@ export default function DashboardPage() {
   ).length
   const activeCount = applications.length
   const recentApplications = applications.slice(0, 3)
+
+  const hasCibil = snapshot.cibilScore !== null
+  const hasEligibility = snapshot.eligibilityScore !== null
 
   return (
     <div className="min-h-screen bg-[#080B14]">
@@ -134,10 +209,20 @@ export default function DashboardPage() {
                 <div className="w-10 h-10 rounded-xl bg-[#6366F1]/20 flex items-center justify-center">
                   <BarChart3 className="w-5 h-5 text-[#6366F1]" />
                 </div>
-                <span className="text-xs text-[#6366F1]">Excellent</span>
+                {hasEligibility && (
+                  <span className="text-xs text-[#6366F1]">
+                    {snapshot.eligibilityScore! >= 70 ? "Excellent" : snapshot.eligibilityScore! >= 40 ? "Fair" : "Low"}
+                  </span>
+                )}
               </div>
               <p className="text-2xl font-bold text-white mb-1">
-                <AnimatedCounter value={87} suffix="%" />
+                {snapshotLoading ? (
+                  <span className="text-muted-foreground text-base">Loading…</span>
+                ) : hasEligibility ? (
+                  <AnimatedCounter value={snapshot.eligibilityScore!} suffix="%" />
+                ) : (
+                  <span className="text-muted-foreground text-base">—</span>
+                )}
               </p>
               <p className="text-sm text-muted-foreground">Eligibility Score</p>
             </GlassCard>
@@ -165,7 +250,13 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-2xl font-bold text-white mb-1">
-                <AnimatedCounter value={750} />
+                {snapshotLoading ? (
+                  <span className="text-muted-foreground text-base">Loading…</span>
+                ) : hasCibil ? (
+                  <AnimatedCounter value={snapshot.cibilScore!} />
+                ) : (
+                  <span className="text-muted-foreground text-base">—</span>
+                )}
               </p>
               <p className="text-sm text-muted-foreground">CIBIL Score</p>
             </GlassCard>
@@ -261,16 +352,36 @@ export default function DashboardPage() {
             <GlassCard className="p-6 h-full flex flex-col w-full" glow glowColor="aurora">
               <h2 className="text-lg font-semibold text-white mb-4">Credit Score</h2>
               <div className="flex items-center justify-center mb-4 flex-1">
-                <CircularProgress value={750} max={900} size={140} color="success" label="CIBIL" />
+                {snapshotLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading…</p>
+                ) : hasCibil ? (
+                  <CircularProgress
+                    value={snapshot.cibilScore!}
+                    max={900}
+                    size={140}
+                    color="success"
+                    label="CIBIL"
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center">
+                    No credit data yet.
+                    <br />
+                    Submit an application to see your score.
+                  </p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div>
                   <p className="text-xs text-muted-foreground">Status</p>
-                  <p className="text-sm font-medium text-[#10B981]">Excellent</p>
+                  <p className={`text-sm font-medium ${hasCibil ? creditStatusColor(snapshot.cibilScore!) : "text-muted-foreground"}`}>
+                    {hasCibil ? creditStatusLabel(snapshot.cibilScore!) : "—"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Updated</p>
-                  <p className="text-sm font-medium text-white">Jan 20</p>
+                  <p className="text-sm font-medium text-white">
+                    {formatDate(snapshot.updatedAt)}
+                  </p>
                 </div>
               </div>
             </GlassCard>

@@ -1,7 +1,8 @@
+// KnowledgeBasePage.tsx
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
-import { DeleteConfirmDialog } from "@/components/ui/delete-dialog" // adjust path if different
+import { DeleteConfirmDialog } from "@/components/ui/delete-dialog"
 import {
   listBanks,
   listKnowledgeDocuments,
@@ -35,6 +36,47 @@ function fileNameToDocumentName(filename: string): string {
   return filename.slice(0, lastDot)
 }
 
+function normalize(str: string): string {
+  return str.toLowerCase().replace(/[^a-z0-9]/g, "")
+}
+
+const BANK_NAME_STOPWORDS = new Set([
+  "bank",
+  "banks",
+  "ltd",
+  "limited",
+  "pvt",
+  "private",
+  "inc",
+  "incorporated",
+  "corp",
+  "corporation",
+  "co",
+  "company",
+  "plc",
+  "finance",
+  "financial",
+  "services",
+  "policy",
+  "loan",
+  "loans",
+])
+
+function bankNameLooksMismatched(
+  bankName: string,
+  documentName: string,
+  fileName: string
+): boolean {
+  const haystack = normalize(documentName) + " " + normalize(fileName)
+  const words = bankName
+    .split(/\s+/)
+    .map((w) => normalize(w))
+    .filter((w) => w.length > 2 && !BANK_NAME_STOPWORDS.has(w))
+
+  if (words.length === 0) return false
+  return !words.some((w) => haystack.includes(w))
+}
+
 export default function KnowledgeBasePage() {
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [formData, setFormData] = useState<DocumentFormData>(initialDocumentFormData)
@@ -42,6 +84,11 @@ export default function KnowledgeBasePage() {
   const [isLoadingBanks, setIsLoadingBanks] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const [formResetKey, setFormResetKey] = useState(0)
+
+  // Tracks whether the user has been warned about a bank mismatch on the current form input
+  const mismatchWarnedRef = useRef(false)
 
   // Toasts
   const [toasts, setToasts] = useState<ToastState[]>([])
@@ -57,8 +104,6 @@ export default function KnowledgeBasePage() {
         { id, message, variant, progress: opts?.progress, persistent: opts?.persistent },
       ])
       if (!opts?.persistent) {
-        // Default lifetime bumped from 4s to 6s — 4s wasn't enough time to
-        // read longer messages before they vanished.
         const duration = opts?.duration ?? 6000
         setTimeout(() => {
           setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -75,6 +120,8 @@ export default function KnowledgeBasePage() {
   const [isLoadingDocs, setIsLoadingDocs] = useState(true)
   const [docsError, setDocsError] = useState<string | null>(null)
   const [extractingId, setExtractingId] = useState<number | null>(null)
+
+  const isExtractionActive = extractingId !== null
 
   // Delete confirmation dialog state
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeDocumentRead | null>(null)
@@ -110,10 +157,11 @@ export default function KnowledgeBasePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDocuments])
 
-  // Auto-fill "Document Name" from the dropped file's name (extension
-  // stripped) the moment the file lands in the dropzone. Only fires when
-  // the Document Name field is still empty, so it never overwrites
-  // something the user already typed.
+  // Reset mismatch warning flag whenever user changes bankId or documentName
+  useEffect(() => {
+    mismatchWarnedRef.current = false
+  }, [formData.bankId, formData.documentName])
+
   useEffect(() => {
     const leadFile = files[0]
     if (!leadFile) return
@@ -125,22 +173,54 @@ export default function KnowledgeBasePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files[0]?.id])
 
-  // Reset the whole form the moment the queued file is removed/cancelled.
-  // Without this, cancelling a file left bankId/documentName/dates behind
-  // even though there's no longer a document those values apply to — the
-  // form looked "filled in" for nothing. Tracks the previous file count
-  // via a ref so this only fires on an actual 1 -> 0 transition (removal),
-  // not on initial mount or after a successful submit's own reset (which
-  // is a no-op here since formData is already back to initial by then).
   const prevFilesCountRef = useRef(0)
   useEffect(() => {
     const prevCount = prevFilesCountRef.current
     if (prevCount > 0 && files.length === 0) {
       setFormData(initialDocumentFormData)
+      setFormResetKey((k) => k + 1)
       setSubmitError(null)
+      mismatchWarnedRef.current = false
     }
     prevFilesCountRef.current = files.length
   }, [files.length])
+
+  const performUpload = async (status: "draft" | "active") => {
+    const selectedFile = files[0]?.file
+    if (!selectedFile) return
+
+    const documentName = formData.documentName.trim()
+    const version = formData.version.trim()
+
+    setIsSubmitting(true)
+    try {
+      await uploadKnowledgeDocument({
+        document_name: documentName,
+        bank_id: Number(formData.bankId),
+        category: formData.category as DocumentCategory,
+        version,
+        effective_date: formData.effectiveDate || undefined,
+        expiry_date: formData.expiryDate || undefined,
+        description: formData.description.trim() || undefined,
+        status,
+        file: selectedFile,
+      })
+      setFiles([])
+      setFormData(initialDocumentFormData)
+      setFormResetKey((k) => k + 1)
+      mismatchWarnedRef.current = false
+      showToast("Document uploaded successfully.", "success")
+      loadDocuments()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        showToast(err.message, "warning")
+      } else {
+        setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const handleSubmit = async (status: "draft" | "active") => {
     const selectedFile = files[0]?.file
@@ -179,44 +259,28 @@ export default function KnowledgeBasePage() {
       return
     }
 
-    setIsSubmitting(true)
-    try {
-      await uploadKnowledgeDocument({
-        document_name: documentName,
-        bank_id: Number(formData.bankId),
-        category: formData.category as DocumentCategory,
-        version,
-        effective_date: formData.effectiveDate || undefined,
-        expiry_date: formData.expiryDate || undefined,
-        description: formData.description.trim() || undefined,
-        status,
-        file: selectedFile,
-      })
-      setFiles([])
-      setFormData(initialDocumentFormData)
-      showToast("Document uploaded successfully.", "success")
-      loadDocuments()
-    } catch (err) {
-      // A 409 here means the backend caught a duplicate our local
-      // pre-check missed (e.g. stale `documents` list, concurrent
-      // upload from another session). Surface it as a toast, same as
-      // the pre-check case, rather than the generic inline form error —
-      // the backend's message already names the conflicting document.
-      if (err instanceof ApiError && err.status === 409) {
-        showToast(err.message, "warning")
-      } else {
-        setSubmitError(err instanceof Error ? err.message : "Failed to upload document.")
-      }
-    } finally {
-      setIsSubmitting(false)
+    // Check for mismatch
+    const selectedBank = bankList.find((b) => b.id === Number(formData.bankId))
+    const isMismatched =
+      selectedBank &&
+      bankNameLooksMismatched(selectedBank.bank_name, documentName, selectedFile.name)
+
+    // First click with mismatch: warn and stop
+    if (isMismatched && !mismatchWarnedRef.current) {
+      mismatchWarnedRef.current = true
+      showToast(
+        "Check your bank — document name doesn't match the selected bank. Click upload again to proceed anyway.",
+        "warning"
+      )
+      return
     }
+
+    // Second click (or no mismatch): proceed directly
+    await performUpload(status)
   }
 
   const handleExtract = async (doc: KnowledgeDocumentRead) => {
     setExtractingId(doc.id)
-    // Persistent + progress: extraction can take a few minutes, so this
-    // toast doesn't time out on its own — it's dismissed explicitly below
-    // the moment the request actually resolves or fails.
     const progressToastId = showToast(
       "Extraction started — this can take a few minutes. We'll update you here once it's done.",
       "info",
@@ -224,9 +288,6 @@ export default function KnowledgeBasePage() {
     )
     try {
       await runExtraction(doc.id)
-      // Refetch the full list rather than just patching local state —
-      // guarantees the document appears in "AI Extraction Results" below
-      // with fully up-to-date data, not a partially-merged local copy.
       await loadDocuments()
       dismissToast(progressToastId)
       showToast("Extraction complete — results are ready to review.", "success")
@@ -296,7 +357,11 @@ export default function KnowledgeBasePage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 items-stretch">
-        <UploadDropzone files={files} setFiles={setFiles} showToast={showToast} />
+        <UploadDropzone
+          files={files}
+          setFiles={setFiles}
+          showToast={showToast}
+        />
         <DocumentDetailsForm
           formData={formData}
           setFormData={setFormData}
@@ -306,6 +371,7 @@ export default function KnowledgeBasePage() {
           isSubmitting={isSubmitting}
           hasFile={files.length > 0}
           onSubmit={handleSubmit}
+          formResetKey={formResetKey}
         />
       </div>
 
@@ -320,9 +386,15 @@ export default function KnowledgeBasePage() {
         onExtract={handleExtract}
         onDownload={handleDownload}
         onDeleteRequest={openDeleteDialog}
+        isExtractionActive={isExtractionActive}
+        showToast={showToast}
       />
 
-      <ExtractionResults documents={documents} />
+      <ExtractionResults
+        documents={documents}
+        isExtractionActive={isExtractionActive}
+        showToast={showToast}
+      />
 
       <DeleteConfirmDialog
         open={!!deleteTarget}
