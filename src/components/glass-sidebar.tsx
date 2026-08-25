@@ -24,6 +24,7 @@ import {
   LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { clearToken } from "@/lib/api"
 
 interface SidebarProps {
   role?: "applicant" | "agent" | "admin"
@@ -56,9 +57,10 @@ export function GlassSidebar({ role = "applicant" }: SidebarProps) {
 
   const links = role === "admin" ? adminLinks : role === "agent" ? agentLinks : applicantLinks
 
-  const bottomLinks = [
-    { href: "/", icon: LogOut, label: "Logout" },
-  ]
+  const handleLogout = () => {
+    clearToken()
+    window.location.href = "/login"
+  }
 
   return (
     <motion.aside
@@ -137,27 +139,24 @@ export function GlassSidebar({ role = "applicant" }: SidebarProps) {
 
       {/* Bottom links */}
       <div className="p-4 border-t border-white/10 space-y-2">
-        {bottomLinks.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="flex items-center gap-3 px-4 py-2 rounded-xl text-muted-foreground hover:text-white hover:bg-white/5 transition-all"
-          >
-            <link.icon className="w-5 h-5 flex-shrink-0" />
-            <AnimatePresence>
-              {!isCollapsed && (
-                <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="text-sm"
-                >
-                  {link.label}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </Link>
-        ))}
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 px-4 py-2 rounded-xl text-muted-foreground hover:text-white hover:bg-white/5 transition-all"
+        >
+          <LogOut className="w-5 h-5 flex-shrink-0" />
+          <AnimatePresence>
+            {!isCollapsed && (
+              <motion.span
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="text-sm"
+              >
+                Logout
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
       </div>
 
       {/* Collapse button */}

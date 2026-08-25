@@ -1,16 +1,7 @@
-// eligibilityApi.ts
-// API client for the Eligibility (Fresh Loan / Balance Transfer) feature.
-// Mirrors the conventions used in api.ts (apiFetch, ApiError, Bearer token auth).
-//
-// NOTE: adjust the import path below to wherever your existing api.ts lives,
-// e.g. "./api", "@/lib/api", "@/services/api", etc.
 import { apiFetch, ApiError } from "./api"
 
 export { ApiError }
 
-// -----------------------------------------------------------------------
-// Enums (mirrors backend Enum classes — values are the wire format)
-// -----------------------------------------------------------------------
 export type CaseType = "fresh_loan" | "balance_transfer"
 
 export type ExpectedLoanType = "term_loan" | "overdraft"
@@ -36,9 +27,6 @@ export type IncentiveFrequency = "monthly" | "quarterly" | "yearly"
 
 export type SalaryCreditType = "imps" | "rtgs" | "neft" | "upi" | "cash"
 
-// -----------------------------------------------------------------------
-// Request types — full frontend form (LoanApplicationRequest)
-// -----------------------------------------------------------------------
 export interface PersonalDetails {
   full_name: string
   age: number // 18-80
@@ -46,12 +34,11 @@ export interface PersonalDetails {
 }
 
 export interface LoanRequirements {
-  // Fresh only — leave undefined/empty object for BT
   expected_loan_type?: ExpectedLoanType | null
-  expected_interest_rate?: number | null // ignored for BT (policy ROI used)
+  expected_interest_rate?: number | null
   expected_emi?: number | null
   principal_amount_required?: number | null
-  tenure_months?: number | null // optional override; else policy tenure.max
+  tenure_months?: number | null
 }
 
 export interface EmploymentDetails {
@@ -90,15 +77,14 @@ export interface ExistingLoan {
   current_emi: number
   foreclosure_available?: boolean
   any_emi_bounce?: boolean
-  // Include this loan in BT calc; default true if FE has no toggle
   selected_for_bt?: boolean
 }
 
 export interface ApplicationFlags {
   is_new_to_cibil?: boolean
   is_govt_profile?: boolean
-  customer_category?: string | null // e.g. "CAT A/B" or "CAT C/D"
-  incentive_inclusion_rate?: number // 0-1, default 0.60
+  customer_category?: string | null
+  incentive_inclusion_rate?: number 
 }
 
 export interface LoanApplicationRequest {
@@ -108,15 +94,11 @@ export interface LoanApplicationRequest {
   employment?: EmploymentDetails
   credit_history: CreditHistory
   salary_banking: SalaryBanking
-  // Required for balance_transfer: at least one entry with selected_for_bt: true
   existing_loans?: ExistingLoan[]
   flags?: ApplicationFlags
   bank_ids?: number[] | null
 }
 
-// -----------------------------------------------------------------------
-// Request type — low-level fresh loan calc (simplified body)
-// -----------------------------------------------------------------------
 export interface FreshLoanRequest {
   case_type?: "fresh_loan"
   net_income_monthly: number
@@ -132,9 +114,6 @@ export interface FreshLoanRequest {
   is_govt_profile?: boolean
 }
 
-// -----------------------------------------------------------------------
-// Response types
-// -----------------------------------------------------------------------
 export interface GateResult {
   name: string
   passed: boolean
@@ -144,7 +123,6 @@ export interface GateResult {
 }
 
 export interface BankRecommendation {
-  // UI card fields for Recommended Banks / AI Recommendations
   bank_id: number
   bank_name: string
   bank_initial: string
@@ -152,19 +130,15 @@ export interface BankRecommendation {
   usp_tagline: string
   match_percent: number // 0-100
 
-  // Interest rate — some policies quote a range rather than a flat number.
-  // Prefer interest_rate_display in the UI; interest_rate is the low end
-  // (kept for back-compat / sorting) and min/max are its raw components.
   interest_rate?: number | null
   interest_rate_min?: number | null
   interest_rate_max?: number | null
-  interest_rate_display?: string | null // e.g. "10.25% - 12.99%"
+  interest_rate_display?: string | null 
 
-  // Max eligible amount — same range pattern as interest rate.
   max_amount?: number | null
   max_amount_min?: number | null
   max_amount_max?: number | null
-  max_amount_display?: string | null // e.g. "₹25.1L - ₹26.7L"
+  max_amount_display?: string | null 
 
   tenure_months?: number | null
   monthly_emi?: number | null
@@ -194,7 +168,7 @@ export interface FreshLoanBankResult {
   annual_interest_rate?: number | null
   annual_interest_rate_min?: number | null
   annual_interest_rate_max?: number | null
-  interest_rate_display?: string | null // e.g. "10.25% - 12.99%"
+  interest_rate_display?: string | null 
 
   tenure_months?: number | null
   max_total_emi?: number | null
@@ -209,7 +183,7 @@ export interface FreshLoanBankResult {
   final_eligible_amount?: number | null
   final_eligible_amount_min?: number | null
   final_eligible_amount_max?: number | null
-  eligible_amount_display?: string | null // e.g. "₹25.1L - ₹26.7L"
+  eligible_amount_display?: string | null 
 
   requested_amount_ok?: boolean | null
   detected_products: any[]
@@ -218,8 +192,6 @@ export interface FreshLoanBankResult {
 export interface FreshLoanResponse {
   case_type: CaseType
   banks_evaluated: number
-  // Present once /eligibility/applications persists the form (loan_applications.id).
-  // null/omitted for the low-level /eligibility/fresh-loan calc, which doesn't save.
   application_id?: number | null
   recommendations: BankRecommendation[]
   results: FreshLoanBankResult[]
@@ -269,21 +241,14 @@ export interface BalanceTransferBankResult {
 export interface BalanceTransferResponse {
   case_type: CaseType
   banks_evaluated: number
-  // Present once /eligibility/applications (or /eligibility/balance-transfer) persists the form.
   application_id?: number | null
   derived: Record<string, any>
   recommendations: BankRecommendation[]
   results: BalanceTransferBankResult[]
 }
-
-// -----------------------------------------------------------------------
-// Saved applications — GET /eligibility/applications, GET /eligibility/applications/{id}
-// -----------------------------------------------------------------------
-
-/** Row shape for GET /eligibility/applications (list view). */
 export interface SavedApplicationSummary {
   id: number
-  case_type: string // "fresh_loan" | "balance_transfer" (stored as plain string on the backend)
+  case_type: string 
   status: string
   applicant_name?: string | null
   banks_evaluated: number
@@ -291,7 +256,6 @@ export interface SavedApplicationSummary {
   updated_at?: string | null
 }
 
-/** Full reload shape for GET /eligibility/applications/{id}. */
 export interface SavedApplicationDetail {
   id: number
   user_id: number
@@ -299,28 +263,14 @@ export interface SavedApplicationDetail {
   status: string
   applicant_name?: string | null
   banks_evaluated: number
-  // Raw stored JSON — shaped like LoanApplicationRequest, but not re-validated on reload.
   payload: Record<string, any>
   derived: Record<string, any>
-  // Backend types these as list[Any]; in practice they're the same
-  // BankRecommendation / *BankResult shapes as the live calc response.
   recommendations: BankRecommendation[]
   results: Array<FreshLoanBankResult | BalanceTransferBankResult>
   created_at?: string | null
   updated_at?: string | null
 }
 
-// -----------------------------------------------------------------------
-// API calls
-// -----------------------------------------------------------------------
-
-/**
- * Main entry point for the frontend form → AI Recommendations screen.
- * Backend auto-detects fresh_loan vs balance_transfer from body.case_type.
- * Creates a new saved application row.
- *
- * POST /eligibility/applications
- */
 export function evaluateLoanApplication(
   body: LoanApplicationRequest
 ): Promise<FreshLoanResponse | BalanceTransferResponse> {
@@ -334,13 +284,6 @@ export function evaluateLoanApplication(
   )
 }
 
-/**
- * Update an existing saved application with new form data. Regenerates
- * AI recommendations/results and overwrites payload/derived/results on
- * the same application_id (does not create a new row).
- *
- * PUT /eligibility/applications/{id}
- */
 export function updateApplication(
   id: number,
   body: LoanApplicationRequest
@@ -355,12 +298,6 @@ export function updateApplication(
   )
 }
 
-/**
- * Balance transfer specific submit. Requires existing_loans[] to contain
- * at least one entry with selected_for_bt: true, or the API 400s.
- *
- * POST /eligibility/balance-transfer
- */
 export function submitBalanceTransfer(
   body: LoanApplicationRequest
 ): Promise<BalanceTransferResponse> {
@@ -371,12 +308,6 @@ export function submitBalanceTransfer(
   })
 }
 
-/**
- * Low-level fresh loan calculator (simplified body — not the full form).
- * Prefer evaluateLoanApplication() for the frontend form flow.
- *
- * POST /eligibility/fresh-loan
- */
 export function freshLoanEligibility(
   body: FreshLoanRequest
 ): Promise<FreshLoanResponse> {
@@ -387,29 +318,14 @@ export function freshLoanEligibility(
   })
 }
 
-/**
- * List saved applications (own applications for a regular user; all
- * applications for an admin — the backend scopes this by role).
- *
- * GET /eligibility/applications
- */
 export function listApplications(): Promise<SavedApplicationSummary[]> {
   return apiFetch<SavedApplicationSummary[]>("/eligibility/applications")
 }
 
-/**
- * Reload a saved application's original form payload plus its AI
- * recommendations/results snapshot.
- *
- * GET /eligibility/applications/{id}
- */
 export function getApplication(id: number): Promise<SavedApplicationDetail> {
   return apiFetch<SavedApplicationDetail>(`/eligibility/applications/${id}`)
 }
 
-// -----------------------------------------------------------------------
-// Type guard — distinguish the union returned by evaluateLoanApplication
-// -----------------------------------------------------------------------
 export function isBalanceTransferResponse(
   res: FreshLoanResponse | BalanceTransferResponse
 ): res is BalanceTransferResponse {
