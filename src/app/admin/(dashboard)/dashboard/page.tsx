@@ -153,8 +153,8 @@ function useApplicationFeedback() {
         // actual response — keeps the page working even on a schema mismatch.
         const likeFromItems = safeItems.filter((i) => i.sentiment === "like").length
         const dislikeFromItems = safeItems.filter((i) => i.sentiment === "dislike").length
-        setLikeCount(typeof res.like_count === "number" ? res.like_count : likeFromItems)
-        setDislikeCount(typeof res.dislike_count === "number" ? res.dislike_count : dislikeFromItems)
+        setLikeCount(typeof res.likes === "number" ? res.likes : likeFromItems)
+        setDislikeCount(typeof res.dislikes === "number" ? res.dislikes : dislikeFromItems)
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : "Failed to load feedback")
@@ -206,20 +206,25 @@ function BankComparisonCard() {
         bank: r.bank_name,
         foir: r.foir,
         rate: r.roi,
+        rateDisplay: r.roi_display ?? (r.roi != null ? `${r.roi}%` : null),
       }))
-      .filter((r) => r[metric] !== null && r[metric] !== undefined) as {
+      .filter((r) => {
+        const value = metric === "foir" ? r.foir : r.rate
+        return value !== null && value !== undefined
+      }) as {
       bank: string
       foir: number
       rate: number
+      rateDisplay: string | null
     }[]
 
-    const sorted = [...withMetric].sort((a, b) => b[metric] - a[metric])
-    const values = sorted.map((r) => r[metric])
+    const sorted = [...withMetric].sort((a, b) => b[metric === "foir" ? "foir" : "rate"] - a[metric === "foir" ? "foir" : "rate"])
+    const values = sorted.map((r) => (metric === "foir" ? r.foir : r.rate))
     const min = Math.min(...values)
     const max = Math.max(...values)
     return sorted.map((row) => ({
       ...row,
-      width: max === min ? 100 : 25 + ((row[metric] - min) / (max - min)) * 75,
+      width: max === min ? 100 : 25 + (( (metric === "foir" ? row.foir : row.rate) - min) / (max - min)) * 75,
     }))
   }, [rowsData, metric])
 
@@ -276,9 +281,10 @@ function BankComparisonCard() {
             <Skeleton key={i} className="h-14 w-full rounded-2xl" />
           ))}
         </div>
-      ) : rows.length === 0 ? (
+          ) : rows.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground py-6 text-center">
           No reviewed policy data available for comparison yet.
+          Approve bank policies in Knowledge Base to populate FOIR &amp; ROI.
         </p>
       ) : (
         <motion.div
@@ -289,6 +295,10 @@ function BankComparisonCard() {
         >
           {rows.map((row, index) => {
             const { suffix } = tabs.find((t) => t.key === metric)!
+            const displayValue =
+              metric === "rate" && row.rateDisplay
+                ? row.rateDisplay.replace(/%$/, "")
+                : String(metric === "foir" ? row.foir : row.rate)
             return (
               <motion.div
                 key={row.bank}
@@ -319,9 +329,9 @@ function BankComparisonCard() {
                     />
                   </div>
                 </div>
-                <div className="w-20 shrink-0 text-right font-mono text-sm font-semibold text-white">
-                  {row[metric]}
-                  {suffix}
+                <div className="w-28 shrink-0 text-right font-mono text-sm font-semibold text-white">
+                  {displayValue}
+                  {metric === "rate" && row.rateDisplay?.includes("%") ? "" : suffix}
                 </div>
               </motion.div>
             )

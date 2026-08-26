@@ -18,63 +18,66 @@ import {
   YAxis,
 } from "recharts"
 import { listKnowledgeDocuments, type KnowledgeDocumentRead, type DocumentCategory } from "@/lib/api"
+import {
+  getApplicationFeedbackTrends,
+  type FeedbackTrendMonth,
+} from "@/lib/userAPI"
 
-const monthlyAccuracyData = [
-  {
-    month: "Jan",
-    accuracy: 82,
-    likes: 18,
-    dislikes: 5,
-    topLiked: "CIBIL 720 eligibility check",
-    topDisliked: "Salary ₹18,000 EMI query",
-    comment: "Need more details on age cutoff",
-  },
-  {
-    month: "Feb",
-    accuracy: 86,
-    likes: 24,
-    dislikes: 4,
-    topLiked: "Loan tenor recommendation",
-    topDisliked: "LTV calculation unclear",
-    comment: "Show alternate bank options",
-  },
-  {
-    month: "Mar",
-    accuracy: 90,
-    likes: 31,
-    dislikes: 3,
-    topLiked: "Policy match for HDFC",
-    topDisliked: "Case study follow-up missing",
-    comment: "Good accuracy on bank rules",
-  },
-  {
-    month: "Apr",
-    accuracy: 93,
-    likes: 37,
-    dislikes: 2,
-    topLiked: "CIBIL threshold details",
-    topDisliked: "Need better rejection reason",
-    comment: "Great improvement over last quarter",
-  },
-  {
-    month: "May",
-    accuracy: 91,
-    likes: 34,
-    dislikes: 4,
-    topLiked: "ROI and eligibility summary",
-    topDisliked: "Policy comparison too brief",
-    comment: "Would like more bank comparison output",
-  },
-  {
-    month: "Jun",
-    accuracy: 94,
-    likes: 40,
-    dislikes: 2,
-    topLiked: "Hinglish query handling",
-    topDisliked: "Need more case study context",
-    comment: "Excellent handling of real cases",
-  },
-]
+type MonthChartPoint = {
+  month: string
+  monthKey: string
+  accuracy: number
+  likes: number
+  dislikes: number
+  topLiked: string
+  topDisliked: string
+}
+
+function toChartPoint(m: FeedbackTrendMonth): MonthChartPoint {
+  return {
+    month: m.label,
+    monthKey: m.month,
+    accuracy: m.accuracy ?? 0,
+    likes: m.likes,
+    dislikes: m.dislikes,
+    topLiked: m.top_liked?.label ?? "—",
+    topDisliked: m.top_disliked?.label ?? "—",
+  }
+}
+
+function useFeedbackTrends(months = 6) {
+  const [points, setPoints] = useState<MonthChartPoint[]>([])
+  const [overallAccuracy, setOverallAccuracy] = useState<number | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const res = await getApplicationFeedbackTrends(months)
+        if (cancelled) return
+        setPoints(res.months.map(toChartPoint))
+        setOverallAccuracy(res.overall_accuracy)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load feedback trends")
+          setPoints([])
+          setOverallAccuracy(null)
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [months])
+
+  return { points, overallAccuracy, isLoading, error }
+}
 
 // Display labels + chart colors for each backend category value.
 // Keys must match the `DocumentCategory` union from lib/api.
@@ -280,13 +283,33 @@ const FeedbackCard = memo(function FeedbackCard({ item }: { item: FeedbackEntry 
 })
 
 export function DashboardCharts() {
-  const [selectedPoint, setSelectedPoint] = useState(monthlyAccuracyData[0])
+  const {
+    points: monthlyAccuracyData,
+    overallAccuracy,
+    isLoading: isLoadingTrends,
+    error: trendsError,
+  } = useFeedbackTrends(6)
+  const [selectedPoint, setSelectedPoint] = useState<MonthChartPoint | null>(null)
   const {
     categoryData,
     totalDocuments,
     isLoading: isLoadingDistribution,
     error: distributionError,
   } = useKnowledgeDistribution()
+
+  useEffect(() => {
+    if (monthlyAccuracyData.length === 0) {
+      setSelectedPoint(null)
+      return
+    }
+    setSelectedPoint((prev) => {
+      if (prev) {
+        const match = monthlyAccuracyData.find((p) => p.monthKey === prev.monthKey)
+        if (match) return match
+      }
+      return monthlyAccuracyData[monthlyAccuracyData.length - 1]
+    })
+  }, [monthlyAccuracyData])
 
   const actionableFeedback = useMemo(
     () => feedbackHistory.filter((item) => item.reaction === "dislike" && item.comment?.trim()),
@@ -301,44 +324,64 @@ export function DashboardCharts() {
           <div>
             <h3 className="font-semibold text-white">Monthly Accuracy Trend</h3>
             <p className="text-sm text-muted-foreground">
-              Sample AI response accuracy and feedback over time.
+              Satisfaction from application feedback (likes ÷ total reactions).
             </p>
           </div>
           <div className="rounded-3xl bg-white/5 px-4 py-3 text-sm text-white">
-            Overall accuracy: <span className="font-semibold">91.0%</span>
+            Overall accuracy:{" "}
+            <span className="font-semibold">
+              {overallAccuracy != null ? `${overallAccuracy}%` : "—"}
+            </span>
           </div>
         </div>
 
+        {trendsError && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {trendsError}
+          </div>
+        )}
+
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={monthlyAccuracyData}
-              onClick={(event: any) => {
-                const payload = event?.activePayload?.[0]?.payload
-                if (payload) setSelectedPoint(payload)
-              }}
-            >
-              <defs>
-                <linearGradient id="accuracyGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-              <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
-              <YAxis stroke="#64748b" fontSize={12} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="accuracy"
-                stroke="#10B981"
-                fillOpacity={1}
-                fill="url(#accuracyGradient)"
-                strokeWidth={2}
-                name="Accuracy"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {isLoadingTrends ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading feedback trends…
+            </div>
+          ) : monthlyAccuracyData.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              No feedback yet — likes/dislikes will appear here.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={monthlyAccuracyData}
+                onClick={(event: any) => {
+                  const payload = event?.activePayload?.[0]?.payload
+                  if (payload) setSelectedPoint(payload)
+                }}
+              >
+                <defs>
+                  <linearGradient id="accuracyGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
+                <YAxis stroke="#64748b" fontSize={12} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="accuracy"
+                  stroke="#10B981"
+                  fillOpacity={1}
+                  fill="url(#accuracyGradient)"
+                  strokeWidth={2}
+                  name="Accuracy"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </GlassCard>
 
@@ -410,32 +453,42 @@ export function DashboardCharts() {
         <GlassCard className="p-6">
           <h3 className="mb-4 font-semibold text-white">Like vs Dislike Trend</h3>
           <div className="h-52">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={monthlyAccuracyData}
-                onClick={(event: any) => {
-                  const payload = event?.activePayload?.[0]?.payload
-                  if (payload) setSelectedPoint(payload)
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar
-                  dataKey="likes"
-                  fill="#10B981"
-                  radius={[4, 4, 0, 0]}
-                  name="Likes"
-                />
-                <Bar
-                  dataKey="dislikes"
-                  fill="#EF4444"
-                  radius={[4, 4, 0, 0]}
-                  name="Dislikes"
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            {isLoadingTrends ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading…
+              </div>
+            ) : monthlyAccuracyData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                No feedback data yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={monthlyAccuracyData}
+                  onClick={(event: any) => {
+                    const payload = event?.activePayload?.[0]?.payload
+                    if (payload) setSelectedPoint(payload)
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
+                  <YAxis stroke="#64748b" fontSize={12} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar
+                    dataKey="likes"
+                    fill="#10B981"
+                    radius={[4, 4, 0, 0]}
+                    name="Likes"
+                  />
+                  <Bar
+                    dataKey="dislikes"
+                    fill="#EF4444"
+                    radius={[4, 4, 0, 0]}
+                    name="Dislikes"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </GlassCard>
       </div>
@@ -449,35 +502,45 @@ export function DashboardCharts() {
             </p>
           </div>
           <span className="rounded-full bg-white/5 px-3 py-1 text-sm text-white">
-            {selectedPoint.month}
+            {selectedPoint?.month ?? "—"}
           </span>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-3xl bg-white/5 p-4">
-            <p className="text-xs text-muted-foreground">Accuracy</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{selectedPoint.accuracy}%</p>
-          </div>
-          <div className="rounded-3xl bg-white/5 p-4">
-            <p className="text-xs text-muted-foreground">Likes</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{selectedPoint.likes}</p>
-          </div>
-          <div className="rounded-3xl bg-white/5 p-4">
-            <p className="text-xs text-muted-foreground">Dislikes</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{selectedPoint.dislikes}</p>
-          </div>
-        </div>
+        {!selectedPoint ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No month selected — feedback will show here once users rate recommendations.
+          </p>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-3xl bg-white/5 p-4">
+                <p className="text-xs text-muted-foreground">Accuracy</p>
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {selectedPoint.accuracy}%
+                </p>
+              </div>
+              <div className="rounded-3xl bg-white/5 p-4">
+                <p className="text-xs text-muted-foreground">Likes</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{selectedPoint.likes}</p>
+              </div>
+              <div className="rounded-3xl bg-white/5 p-4">
+                <p className="text-xs text-muted-foreground">Dislikes</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{selectedPoint.dislikes}</p>
+              </div>
+            </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <div className="rounded-3xl bg-white/5 p-4">
-            <p className="text-xs text-muted-foreground">Top liked query</p>
-            <p className="mt-2 text-sm text-white">{selectedPoint.topLiked}</p>
-          </div>
-          <div className="rounded-3xl bg-white/5 p-4">
-            <p className="text-xs text-muted-foreground">Top disliked query</p>
-            <p className="mt-2 text-sm text-white">{selectedPoint.topDisliked}</p>
-          </div>
-        </div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-3xl bg-white/5 p-4">
+                <p className="text-xs text-muted-foreground">Top liked case</p>
+                <p className="mt-2 text-sm text-white">{selectedPoint.topLiked}</p>
+              </div>
+              <div className="rounded-3xl bg-white/5 p-4">
+                <p className="text-xs text-muted-foreground">Top disliked feedback</p>
+                <p className="mt-2 text-sm text-white">{selectedPoint.topDisliked}</p>
+              </div>
+            </div>
+          </>
+        )}
       </GlassCard>
      
     </div>

@@ -573,6 +573,9 @@ export interface PolicyComparisonRow {
   extraction_status: string | null
   foir: number | null
   roi: number | null
+  roi_min?: number | null
+  roi_max?: number | null
+  roi_display?: string | null
   cibil: number | null
   ltv: number | null
   age: string | null

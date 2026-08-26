@@ -271,39 +271,6 @@ export interface SavedApplicationDetail {
   updated_at?: string | null
 }
 
-// ---------------------------------------------------------------------
-// Application feedback (like / dislike on AI recommendations)
-// ---------------------------------------------------------------------
-
-export type FeedbackSentiment = "like" | "dislike"
-
-export interface ApplicationFeedbackRead {
-  id: number
-  application_id: number
-  user_id: number
-  sentiment: FeedbackSentiment
-  comment?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-}
-
-export interface ApplicationFeedbackUpsert {
-  sentiment: FeedbackSentiment
-  comment?: string | null
-}
-
-export interface ApplicationFeedbackListItem extends ApplicationFeedbackRead {
-  username?: string | null
-  applicant_name?: string | null
-  case_type?: string | null
-}
-
-export interface ApplicationFeedbackListResponse {
-  items: ApplicationFeedbackListItem[]
-  like_count: number
-  dislike_count: number
-}
-
 export function evaluateLoanApplication(
   body: LoanApplicationRequest
 ): Promise<FreshLoanResponse | BalanceTransferResponse> {
@@ -359,17 +326,213 @@ export function getApplication(id: number): Promise<SavedApplicationDetail> {
   return apiFetch<SavedApplicationDetail>(`/eligibility/applications/${id}`)
 }
 
-export function isBalanceTransferResponse(
-  res: FreshLoanResponse | BalanceTransferResponse
-): res is BalanceTransferResponse {
-  return res.case_type === "balance_transfer"
+// -----------------------------------------------------------------------
+// Recommendation feedback (like / dislike)
+// -----------------------------------------------------------------------
+
+export type FeedbackSentiment = "like" | "dislike"
+
+export interface ApplicationFeedbackUpsert {
+  sentiment: FeedbackSentiment
+  comment?: string | null
 }
 
-// ---------------------------------------------------------------------
-// Feedback API calls
-// ---------------------------------------------------------------------
+export interface ApplicationFeedbackRead {
+  id: number
+  application_id: number
+  user_id: number
+  sentiment: FeedbackSentiment
+  comment: string | null
+  created_at: string | null
+  updated_at: string | null
+}
 
-/** Like / dislike an application's AI recommendations (upsert — one row per user per application). */
+export interface ApplicationFeedbackListItem extends ApplicationFeedbackRead {
+  username: string | null
+  user_full_name: string | null
+  applicant_name: string | null
+  case_type: string | null
+}
+
+export interface ApplicationFeedbackListResponse {
+  total: number
+  likes: number
+  dislikes: number
+  items: ApplicationFeedbackListItem[]
+}
+
+export interface FeedbackTrendHighlight {
+  label: string
+  application_id: number | null
+  comment: string | null
+  count: number
+}
+
+export interface FeedbackTrendMonth {
+  month: string
+  label: string
+  likes: number
+  dislikes: number
+  total: number
+  accuracy: number | null
+  top_liked: FeedbackTrendHighlight | null
+  top_disliked: FeedbackTrendHighlight | null
+}
+
+export interface FeedbackTrendsResponse {
+  overall_accuracy: number | null
+  months: FeedbackTrendMonth[]
+}
+
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+]
+
+function satisfactionPct(likes: number, dislikes: number): number | null {
+  const n = likes + dislikes
+  if (n === 0) return null
+  return Math.round((likes / n) * 1000) / 10
+}
+
+function monthKeyFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+}
+
+/** Build monthly trends from the admin feedback list (fallback when /trends is missing). */
+function buildTrendsFromFeedbackList(
+  items: ApplicationFeedbackListItem[],
+  months: number
+): FeedbackTrendsResponse {
+  const now = new Date()
+  const endY = now.getUTCFullYear()
+  const endM = now.getUTCMonth() // 0-based
+  const monthKeys: string[] = []
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(endY, endM - i, 1))
+    monthKeys.push(
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+    )
+  }
+
+  type Bucket = {
+    likes: ApplicationFeedbackListItem[]
+    dislikes: ApplicationFeedbackListItem[]
+  }
+  const byMonth = new Map<string, Bucket>()
+  for (const key of monthKeys) byMonth.set(key, { likes: [], dislikes: [] })
+
+  for (const item of items) {
+    const key = monthKeyFromIso(item.created_at ?? item.updated_at)
+    if (!key || !byMonth.has(key)) continue
+    const bucket = byMonth.get(key)!
+    if (item.sentiment === "like") bucket.likes.push(item)
+    else if (item.sentiment === "dislike") bucket.dislikes.push(item)
+  }
+
+  function topHighlight(
+    rows: ApplicationFeedbackListItem[],
+    preferComment: boolean
+  ): FeedbackTrendHighlight | null {
+    if (rows.length === 0) return null
+    const counts = new Map<string, { count: number; sample: ApplicationFeedbackListItem }>()
+    for (const row of rows) {
+      const label = preferComment
+        ? (row.comment?.trim() || row.applicant_name || row.case_type || `App #${row.application_id}`)
+        : (row.applicant_name || row.case_type || `App #${row.application_id}`)
+      const prev = counts.get(label)
+      if (prev) prev.count += 1
+      else counts.set(label, { count: 1, sample: row })
+    }
+    let best: { label: string; count: number; sample: ApplicationFeedbackListItem } | null = null
+    for (const [label, v] of counts) {
+      if (!best || v.count > best.count) best = { label, count: v.count, sample: v.sample }
+    }
+    if (!best) return null
+    return {
+      label: best.label,
+      application_id: best.sample.application_id,
+      comment: best.sample.comment,
+      count: best.count,
+    }
+  }
+
+  let totalLikes = 0
+  let totalDislikes = 0
+  const monthItems: FeedbackTrendMonth[] = monthKeys.map((key) => {
+    const [ys, ms] = key.split("-")
+    const y = Number(ys)
+    const m = Number(ms)
+    const bucket = byMonth.get(key)!
+    const likes = bucket.likes.length
+    const dislikes = bucket.dislikes.length
+    totalLikes += likes
+    totalDislikes += dislikes
+    return {
+      month: key,
+      label: MONTH_LABELS[m - 1] ?? key,
+      likes,
+      dislikes,
+      total: likes + dislikes,
+      accuracy: satisfactionPct(likes, dislikes),
+      top_liked: topHighlight(bucket.likes, false),
+      top_disliked: topHighlight(bucket.dislikes, true),
+    }
+  })
+
+  return {
+    overall_accuracy: satisfactionPct(totalLikes, totalDislikes),
+    months: monthItems,
+  }
+}
+
+/** Admin: list all users' like/dislike feedback. */
+export function listAllApplicationFeedback(params?: {
+  sentiment?: FeedbackSentiment
+  limit?: number
+}): Promise<ApplicationFeedbackListResponse> {
+  const search = new URLSearchParams()
+  if (params?.sentiment) search.set("sentiment", params.sentiment)
+  if (params?.limit != null) search.set("limit", String(params.limit))
+  const qs = search.toString()
+  return apiFetch<ApplicationFeedbackListResponse>(
+    `/eligibility/feedback${qs ? `?${qs}` : ""}`
+  )
+}
+
+/**
+ * Admin: monthly like/dislike trend for dashboard charts.
+ * Falls back to aggregating GET /eligibility/feedback when /trends is not deployed (404).
+ */
+export async function getApplicationFeedbackTrends(
+  months: number = 6
+): Promise<FeedbackTrendsResponse> {
+  const safeMonths = Math.min(24, Math.max(1, months))
+  try {
+    return await apiFetch<FeedbackTrendsResponse>(
+      `/eligibility/feedback/trends?months=${safeMonths}`
+    )
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 404) throw err
+    const list = await listAllApplicationFeedback({ limit: 500 })
+    return buildTrendsFromFeedbackList(list.items ?? [], safeMonths)
+  }
+}
+
+/** Like / dislike an application's AI recommendations (upsert). */
 export function submitApplicationFeedback(
   applicationId: number,
   body: ApplicationFeedbackUpsert
@@ -384,7 +547,7 @@ export function submitApplicationFeedback(
   )
 }
 
-/** Get the current user's feedback for an application, or null if none was given. */
+/** Current user's feedback for an application, or null. */
 export function getApplicationFeedback(
   applicationId: number
 ): Promise<ApplicationFeedbackRead | null> {
@@ -393,25 +556,20 @@ export function getApplicationFeedback(
   )
 }
 
-/** Clear (undo) the current user's feedback for an application. Backend returns 204 No Content. */
-export async function clearApplicationFeedback(
+/** Clear (undo) current user's feedback. Backend returns 204. */
+export function clearApplicationFeedback(
   applicationId: number
 ): Promise<void> {
-  await apiFetch<void>(`/eligibility/applications/${applicationId}/feedback`, {
+  return apiFetch<void>(`/eligibility/applications/${applicationId}/feedback`, {
     method: "DELETE",
   })
 }
 
-/** Admin only: list all users' like/dislike feedback across applications. */
-export function listAllApplicationFeedback(params?: {
-  sentiment?: FeedbackSentiment
-  limit?: number
-}): Promise<ApplicationFeedbackListResponse> {
-  const search = new URLSearchParams()
-  if (params?.sentiment) search.set("sentiment", params.sentiment)
-  if (params?.limit) search.set("limit", String(params.limit))
-  const qs = search.toString()
-  return apiFetch<ApplicationFeedbackListResponse>(
-    `/eligibility/feedback${qs ? `?${qs}` : ""}`
-  )
+/** Alias for clearApplicationFeedback. */
+export const deleteApplicationFeedback = clearApplicationFeedback
+
+export function isBalanceTransferResponse(
+  res: FreshLoanResponse | BalanceTransferResponse
+): res is BalanceTransferResponse {
+  return res.case_type === "balance_transfer"
 }
