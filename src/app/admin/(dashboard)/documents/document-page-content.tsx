@@ -62,7 +62,7 @@ import { SectionLoader } from "@/components/loading"
 
 const initialDocuments: KnowledgeDocumentRead[] = []
 
-const ITEMS_PER_PAGE = 5
+const ITEMS_PER_PAGE = 10
 
 const statusConfig = {
   active: { label: "Active", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },

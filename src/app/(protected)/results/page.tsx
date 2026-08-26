@@ -196,9 +196,14 @@ export default function ResultsPage() {
   const derived = isBT ? (result as BalanceTransferResponse).derived ?? {} : null
 
   /**
-   * Clicking a thumb when it's already the active choice undoes the
-   * feedback (DELETE). Otherwise it opens the popover to collect an
-   * optional comment before submitting like/dislike.
+   * Clicking a thumb submits the vote immediately (like/dislike), matching
+   * the ChatGPT-style pattern — the API call happens on click, not on
+   * popover submit. The popover then opens purely to collect an *optional*
+   * comment; if the user closes it without typing anything, the vote is
+   * still saved.
+   *
+   * Clicking the already-active thumb undoes the vote (DELETE), same as
+   * before.
    */
   const handleFeedback = async (value: "up" | "down") => {
     const applicationId = result?.application_id
@@ -224,9 +229,40 @@ export default function ResultsPage() {
       return
     }
 
+    // New vote — reflect it in the UI right away.
     setFeedback(value)
     setFeedbackSubmitted(false)
     setFeedbackText("")
+
+    if (applicationId == null) {
+      // No saved application to attach feedback to — just open the popover
+      // (comment) but there's nothing to POST yet.
+      setPopoverOpen(true)
+      return
+    }
+
+    setFeedbackBusy(true)
+    try {
+      // Submit the vote immediately with no comment. This is what makes it
+      // show up on the admin dashboard right away, even if the user never
+      // opens/uses the comment popover.
+      await submitApplicationFeedback(applicationId, {
+        sentiment: toSentiment(value),
+        comment: null,
+      })
+    } catch (err) {
+      // Roll back the optimistic UI state if the save actually failed.
+      setFeedback(null)
+      setFeedbackError(
+        err instanceof ApiError ? err.message : "Couldn't submit feedback. Please try again."
+      )
+      setFeedbackBusy(false)
+      return
+    }
+    setFeedbackBusy(false)
+
+    // Vote is saved — now open the popover just to let the user optionally
+    // add a comment.
     setPopoverOpen(true)
   }
 
@@ -238,9 +274,16 @@ export default function ResultsPage() {
     }, 200)
   }
 
+  /**
+   * Fires when the user submits the popover's comment box. The vote itself
+   * was already saved in handleFeedback, so this is effectively an update
+   * that attaches the free-text comment to the existing feedback row.
+   * (Assumes submitApplicationFeedback is an upsert on the backend —
+   * same application_id + user overwrites rather than duplicates.)
+   */
   const handleSubmitFeedback = async () => {
     const applicationId = result?.application_id
-    if (feedback == null || applicationId == null) {
+    if (feedback == null || applicationId == null || !feedbackText.trim()) {
       handleClosePopover()
       return
     }
@@ -250,7 +293,7 @@ export default function ResultsPage() {
     try {
       await submitApplicationFeedback(applicationId, {
         sentiment: toSentiment(feedback),
-        comment: feedbackText.trim() ? feedbackText.trim() : null,
+        comment: feedbackText.trim(),
       })
       setFeedbackSubmitted(true)
       setTimeout(() => {

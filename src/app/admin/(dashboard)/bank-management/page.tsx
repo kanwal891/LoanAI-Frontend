@@ -32,7 +32,7 @@ import {
   type KnowledgeDocumentRead,
 } from "@/lib/api"
 
-const BANKS_PER_PAGE = 4
+const BANKS_PER_PAGE = 5
 
 const AVATAR_TINTS = [
   "from-[#1B4FBB] to-[#6366F1]",
