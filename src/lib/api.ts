@@ -196,6 +196,13 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     throw new ApiError(message, res.status)
   }
 
+  // No-content responses (e.g. DELETE /eligibility/applications/{id}/feedback
+  // returns 204) have no body — calling res.json() on them throws. Some
+  // backends also send Content-Length: 0 with a 200; guard on both.
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T
+  }
+
   return res.json()
 }
 

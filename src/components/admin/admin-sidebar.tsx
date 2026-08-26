@@ -59,9 +59,7 @@ export function AdminSidebar() {
         collapsed ? "w-20" : "w-64"
       )}
     >
-      {/* Logo — stacked vertically when collapsed so the icon box and the
-          toggle button each get their own row instead of being squeezed
-          side-by-side into ~48px of width (which shrank the logo icon). */}
+
       <div
         className={cn(
           "flex items-center border-b border-white/10 transition-all duration-300",

@@ -271,6 +271,39 @@ export interface SavedApplicationDetail {
   updated_at?: string | null
 }
 
+// ---------------------------------------------------------------------
+// Application feedback (like / dislike on AI recommendations)
+// ---------------------------------------------------------------------
+
+export type FeedbackSentiment = "like" | "dislike"
+
+export interface ApplicationFeedbackRead {
+  id: number
+  application_id: number
+  user_id: number
+  sentiment: FeedbackSentiment
+  comment?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface ApplicationFeedbackUpsert {
+  sentiment: FeedbackSentiment
+  comment?: string | null
+}
+
+export interface ApplicationFeedbackListItem extends ApplicationFeedbackRead {
+  username?: string | null
+  applicant_name?: string | null
+  case_type?: string | null
+}
+
+export interface ApplicationFeedbackListResponse {
+  items: ApplicationFeedbackListItem[]
+  like_count: number
+  dislike_count: number
+}
+
 export function evaluateLoanApplication(
   body: LoanApplicationRequest
 ): Promise<FreshLoanResponse | BalanceTransferResponse> {
@@ -330,4 +363,55 @@ export function isBalanceTransferResponse(
   res: FreshLoanResponse | BalanceTransferResponse
 ): res is BalanceTransferResponse {
   return res.case_type === "balance_transfer"
+}
+
+// ---------------------------------------------------------------------
+// Feedback API calls
+// ---------------------------------------------------------------------
+
+/** Like / dislike an application's AI recommendations (upsert — one row per user per application). */
+export function submitApplicationFeedback(
+  applicationId: number,
+  body: ApplicationFeedbackUpsert
+): Promise<ApplicationFeedbackRead> {
+  return apiFetch<ApplicationFeedbackRead>(
+    `/eligibility/applications/${applicationId}/feedback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  )
+}
+
+/** Get the current user's feedback for an application, or null if none was given. */
+export function getApplicationFeedback(
+  applicationId: number
+): Promise<ApplicationFeedbackRead | null> {
+  return apiFetch<ApplicationFeedbackRead | null>(
+    `/eligibility/applications/${applicationId}/feedback`
+  )
+}
+
+/** Clear (undo) the current user's feedback for an application. Backend returns 204 No Content. */
+export async function clearApplicationFeedback(
+  applicationId: number
+): Promise<void> {
+  await apiFetch<void>(`/eligibility/applications/${applicationId}/feedback`, {
+    method: "DELETE",
+  })
+}
+
+/** Admin only: list all users' like/dislike feedback across applications. */
+export function listAllApplicationFeedback(params?: {
+  sentiment?: FeedbackSentiment
+  limit?: number
+}): Promise<ApplicationFeedbackListResponse> {
+  const search = new URLSearchParams()
+  if (params?.sentiment) search.set("sentiment", params.sentiment)
+  if (params?.limit) search.set("limit", String(params.limit))
+  const qs = search.toString()
+  return apiFetch<ApplicationFeedbackListResponse>(
+    `/eligibility/feedback${qs ? `?${qs}` : ""}`
+  )
 }

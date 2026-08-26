@@ -30,10 +30,14 @@ import { FeedbackPopover } from "@/components/feedback-popover"
 import {
   isBalanceTransferResponse,
   getApplication,
+  submitApplicationFeedback,
+  getApplicationFeedback,
+  clearApplicationFeedback,
   ApiError,
   type FreshLoanResponse,
   type BalanceTransferResponse,
   type BankRecommendation,
+  type FeedbackSentiment,
 } from "@/lib/userAPI"
 
 type FeedbackValue = "up" | "down" | null
@@ -41,6 +45,10 @@ type FeedbackValue = "up" | "down" | null
 // sessionStorage keys shared with /apply for the "Update Application" flow
 const EDIT_PAYLOAD_KEY = "eligibilityEditPayload"
 const EDIT_APPLICATION_ID_KEY = "eligibilityEditApplicationId"
+
+// Maps the UI's up/down vocabulary to the backend's like/dislike sentiment.
+const toSentiment = (v: "up" | "down"): FeedbackSentiment => (v === "up" ? "like" : "dislike")
+const fromSentiment = (s: FeedbackSentiment): FeedbackValue => (s === "like" ? "up" : "down")
 
 /** Format a rupee amount as "₹XX L" / "₹X.XX Cr", matching the design's shorthand style. */
 function formatINR(amount: number): string {
@@ -89,6 +97,8 @@ export default function ResultsPage() {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [feedbackText, setFeedbackText] = useState("")
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  const [feedbackBusy, setFeedbackBusy] = useState(false)
+  const [feedbackError, setFeedbackError] = useState<string | null>(null)
 
   // "Update Application" — fetching the saved payload before navigating to /apply
   const [isPreparingEdit, setIsPreparingEdit] = useState(false)
@@ -104,6 +114,27 @@ export default function ResultsPage() {
       setHasLoaded(true)
     }
   }, [])
+
+  // Load the current user's existing feedback for this application (if any)
+  // so the thumbs up/down buttons reflect prior state on revisit/refresh.
+  useEffect(() => {
+    const applicationId = result?.application_id
+    if (applicationId == null) return
+
+    let active = true
+    getApplicationFeedback(applicationId)
+      .then((existing) => {
+        if (!active) return
+        if (existing) setFeedback(fromSentiment(existing.sentiment))
+      })
+      .catch(() => {
+        // Non-fatal — just leave feedback buttons in their default state.
+      })
+
+    return () => {
+      active = false
+    }
+  }, [result?.application_id])
 
   const recommendations: BankRecommendation[] = result?.recommendations ?? []
   const isBT = result ? isBalanceTransferResponse(result) : false
@@ -164,7 +195,35 @@ export default function ResultsPage() {
 
   const derived = isBT ? (result as BalanceTransferResponse).derived ?? {} : null
 
-  const handleFeedback = (value: "up" | "down") => {
+  /**
+   * Clicking a thumb when it's already the active choice undoes the
+   * feedback (DELETE). Otherwise it opens the popover to collect an
+   * optional comment before submitting like/dislike.
+   */
+  const handleFeedback = async (value: "up" | "down") => {
+    const applicationId = result?.application_id
+    setFeedbackError(null)
+
+    if (feedback === value) {
+      // Undo existing feedback.
+      if (applicationId == null) {
+        setFeedback(null)
+        return
+      }
+      setFeedbackBusy(true)
+      try {
+        await clearApplicationFeedback(applicationId)
+        setFeedback(null)
+      } catch (err) {
+        setFeedbackError(
+          err instanceof ApiError ? err.message : "Couldn't clear feedback. Please try again."
+        )
+      } finally {
+        setFeedbackBusy(false)
+      }
+      return
+    }
+
     setFeedback(value)
     setFeedbackSubmitted(false)
     setFeedbackText("")
@@ -174,19 +233,36 @@ export default function ResultsPage() {
   const handleClosePopover = () => {
     setPopoverOpen(false)
     setTimeout(() => {
-      setFeedback(null)
       setFeedbackText("")
       setFeedbackSubmitted(false)
     }, 200)
   }
 
-  const handleSubmitFeedback = () => {
-    // TODO: wire up to your feedback API / handler
-    // await submitFeedback({ rating: feedback, comment: feedbackText })
-    setFeedbackSubmitted(true)
-    setTimeout(() => {
+  const handleSubmitFeedback = async () => {
+    const applicationId = result?.application_id
+    if (feedback == null || applicationId == null) {
       handleClosePopover()
-    }, 1400)
+      return
+    }
+
+    setFeedbackError(null)
+    setFeedbackBusy(true)
+    try {
+      await submitApplicationFeedback(applicationId, {
+        sentiment: toSentiment(feedback),
+        comment: feedbackText.trim() ? feedbackText.trim() : null,
+      })
+      setFeedbackSubmitted(true)
+      setTimeout(() => {
+        handleClosePopover()
+      }, 1400)
+    } catch (err) {
+      setFeedbackError(
+        err instanceof ApiError ? err.message : "Couldn't submit feedback. Please try again."
+      )
+    } finally {
+      setFeedbackBusy(false)
+    }
   }
 
   /**
@@ -376,35 +452,42 @@ export default function ResultsPage() {
 
               {/* AI Response Feedback — anchor for the popover */}
               <div className="relative flex items-center gap-3 shrink-0">
-                <div className="flex items-center gap-2">
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => handleFeedback("up")}
-                    aria-pressed={feedback === "up"}
-                    aria-label="Good response"
-                    className={`p-2 rounded-lg transition-colors ${
-                      feedback === "up"
-                        ? "bg-[#10B981]/20 text-[#10B981]"
-                        : "text-muted-foreground hover:text-white hover:bg-white/10"
-                    }`}
-                  >
-                    <ThumbsUp className={`w-5 h-5 ${feedback === "up" ? "fill-current" : ""}`} />
-                  </motion.button>
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => handleFeedback("down")}
-                    aria-pressed={feedback === "down"}
-                    aria-label="Bad response"
-                    className={`p-2 rounded-lg transition-colors ${
-                      feedback === "down"
-                        ? "bg-red-500/20 text-red-400"
-                        : "text-muted-foreground hover:text-white hover:bg-white/10"
-                    }`}
-                  >
-                    <ThumbsDown className={`w-5 h-5 ${feedback === "down" ? "fill-current" : ""}`} />
-                  </motion.button>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-2">
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleFeedback("up")}
+                      disabled={feedbackBusy}
+                      aria-pressed={feedback === "up"}
+                      aria-label="Good response"
+                      className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
+                        feedback === "up"
+                          ? "bg-[#10B981]/20 text-[#10B981]"
+                          : "text-muted-foreground hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      <ThumbsUp className={`w-5 h-5 ${feedback === "up" ? "fill-current" : ""}`} />
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => handleFeedback("down")}
+                      disabled={feedbackBusy}
+                      aria-pressed={feedback === "down"}
+                      aria-label="Bad response"
+                      className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
+                        feedback === "down"
+                          ? "bg-red-500/20 text-red-400"
+                          : "text-muted-foreground hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      <ThumbsDown className={`w-5 h-5 ${feedback === "down" ? "fill-current" : ""}`} />
+                    </motion.button>
+                  </div>
+                  {feedbackError && (
+                    <p className="text-xs text-red-400 max-w-[200px] text-right">{feedbackError}</p>
+                  )}
                 </div>
 
                 <FeedbackPopover
