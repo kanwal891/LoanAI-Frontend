@@ -1,4 +1,3 @@
-// KnowledgeBasePage.tsx
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
@@ -87,10 +86,8 @@ export default function KnowledgeBasePage() {
 
   const [formResetKey, setFormResetKey] = useState(0)
 
-  // Tracks whether the user has been warned about a bank mismatch on the current form input
   const mismatchWarnedRef = useRef(false)
 
-  // Toasts
   const [toasts, setToasts] = useState<ToastState[]>([])
   const showToast = useCallback(
     (
@@ -147,17 +144,14 @@ export default function KnowledgeBasePage() {
         const banks = await listBanks()
         setBankList(banks)
       } catch {
-        // bank load errors surface via the empty-state in the select below
       } finally {
         setIsLoadingBanks(false)
       }
     }
     loadBanks()
     loadDocuments()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDocuments])
 
-  // Reset mismatch warning flag whenever user changes bankId or documentName
   useEffect(() => {
     mismatchWarnedRef.current = false
   }, [formData.bankId, formData.documentName])
@@ -170,7 +164,6 @@ export default function KnowledgeBasePage() {
         ? prev
         : { ...prev, documentName: fileNameToDocumentName(leadFile.name) }
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files[0]?.id])
 
   const prevFilesCountRef = useRef(0)
@@ -265,7 +258,6 @@ export default function KnowledgeBasePage() {
       selectedBank &&
       bankNameLooksMismatched(selectedBank.bank_name, documentName, selectedFile.name)
 
-    // First click with mismatch: warn and stop
     if (isMismatched && !mismatchWarnedRef.current) {
       mismatchWarnedRef.current = true
       showToast(
@@ -275,7 +267,6 @@ export default function KnowledgeBasePage() {
       return
     }
 
-    // Second click (or no mismatch): proceed directly
     await performUpload(status)
   }
 

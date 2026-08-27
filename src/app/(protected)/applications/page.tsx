@@ -1,9 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import { ArrowLeft, RefreshCw, FileWarning, Inbox, FileText, Pencil } from "lucide-react"
+import {
+  ArrowLeft,
+  RefreshCw,
+  FileWarning,
+  Inbox,
+  FileText,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import Link from "next/link"
 import { GlassSidebar } from "@/components/glass-sidebar"
 import { GlassCard } from "@/components/glass-card"
@@ -27,6 +36,9 @@ import {
 // Must match the keys read by /apply's edit-prefill logic.
 const EDIT_PAYLOAD_KEY = "eligibilityEditPayload"
 const EDIT_APPLICATION_ID_KEY = "eligibilityEditApplicationId"
+
+// Fixed number of applications shown per page.
+const PAGE_SIZE = 7
 
 /** Human label for the raw "fresh_loan" / "balance_transfer" case_type string. */
 function caseTypeLabel(caseType: string): string {
@@ -88,6 +100,58 @@ function detailToResultPayload(
   } as FreshLoanResponse
 }
 
+/**
+ * Fixed-size pager: always shows PAGE_SIZE rows per page (the last page
+ * may show fewer), so the list height stays predictable.
+ */
+function Pagination({
+  page,
+  pageCount,
+  onPageChange,
+  totalItems,
+}: {
+  page: number
+  pageCount: number
+  onPageChange: (page: number) => void
+  totalItems: number
+}) {
+  if (pageCount <= 1) return null
+
+  const startItem = (page - 1) * PAGE_SIZE + 1
+  const endItem = Math.min(page * PAGE_SIZE, totalItems)
+
+  return (
+    <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4">
+      <p className="text-xs text-muted-foreground">
+        Showing {startItem}–{endItem} of {totalItems}
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          className="p-2 rounded-lg glass hover:bg-white/10 text-muted-foreground hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          aria-label="Previous page"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <span className="min-w-[80px] text-center text-xs text-muted-foreground">
+          Page {page} of {pageCount}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= pageCount}
+          className="p-2 rounded-lg glass hover:bg-white/10 text-muted-foreground hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          aria-label="Next page"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function ApplicationsPage() {
   const router = useRouter()
   const [applications, setApplications] = useState<SavedApplicationSummary[]>([])
@@ -97,6 +161,10 @@ export default function ApplicationsPage() {
   const [openError, setOpenError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
+
+  // Pagination state for the applications list.
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(applications.length / PAGE_SIZE))
 
   const fetchApplications = async () => {
     setIsLoading(true)
@@ -114,6 +182,17 @@ export default function ApplicationsPage() {
   useEffect(() => {
     fetchApplications()
   }, [])
+
+  // Keep the current page in range whenever the list changes (refresh,
+  // fewer rows returned, etc.) instead of landing on a blank page.
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, pageCount))
+  }, [pageCount])
+
+  const pagedApplications = useMemo(
+    () => applications.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [applications, page]
+  )
 
   const handleOpenApplication = async (id: number) => {
     setOpenError(null)
@@ -233,7 +312,7 @@ export default function ApplicationsPage() {
         {!isLoading && !loadError && applications.length > 0 && (
           <GlassCard className="p-6">
             <div className="space-y-4">
-              {applications.map((app, index) => {
+              {pagedApplications.map((app, index) => {
                 const isOpening = openingId === app.id
                 const isEditing = editingId === app.id
                 const isBusy = isOpening || isEditing
@@ -303,6 +382,13 @@ export default function ApplicationsPage() {
                 )
               })}
             </div>
+
+            <Pagination
+              page={page}
+              pageCount={pageCount}
+              onPageChange={setPage}
+              totalItems={applications.length}
+            />
           </GlassCard>
         )}
       </main>

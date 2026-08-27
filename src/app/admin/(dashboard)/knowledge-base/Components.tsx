@@ -1,7 +1,7 @@
 // Components.tsx
 "use client"
 
-import { useCallback, useState, useEffect } from "react"
+import { useCallback, useState, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDropzone, type FileRejection } from "react-dropzone"
 import Link from "next/link"
@@ -25,6 +25,9 @@ import {
   Eye,
   Info,
   Lock,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { Button } from "@/components/ui/button"
@@ -51,6 +54,9 @@ import {
 } from "./types"
 import type { BankRead, KnowledgeDocumentRead } from "@/lib/api"
 import { SectionLoader } from "@/components/loading"
+
+// Fixed number of rows shown per page in the paginated lists below.
+const PAGE_SIZE = 5
 
 type ToastStyle = {
   icon: React.ReactNode
@@ -811,6 +817,61 @@ export function DocumentDetailsForm({
   )
 }
 
+/**
+ * Fixed-size pager used below any list that needs pagination.
+ * Always shows PAGE_SIZE items per page (last page may show fewer),
+ * so the list height stays predictable instead of growing unbounded.
+ */
+function Pagination({
+  page,
+  pageCount,
+  onPageChange,
+  totalItems,
+}: {
+  page: number
+  pageCount: number
+  onPageChange: (page: number) => void
+  totalItems: number
+}) {
+  if (pageCount <= 1) return null
+
+  const startItem = (page - 1) * PAGE_SIZE + 1
+  const endItem = Math.min(page * PAGE_SIZE, totalItems)
+
+  return (
+    <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
+      <p className="text-xs text-muted-foreground">
+        Showing {startItem}–{endItem} of {totalItems}
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="border-white/10 bg-white/5 px-2"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </Button>
+        <span className="min-w-[70px] text-center text-xs text-muted-foreground">
+          Page {page} of {pageCount}
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="border-white/10 bg-white/5 px-2"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= pageCount}
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 interface ExtractionQueueProps {
   documents: KnowledgeDocumentRead[]
   isLoadingDocs: boolean
@@ -844,6 +905,21 @@ export function ExtractionQueue({
 }: ExtractionQueueProps) {
   const needsExtractionDocuments = documents.filter(
     (doc) => doc.extraction_status === "pending" || doc.extraction_status === "failed"
+  )
+
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(needsExtractionDocuments.length / PAGE_SIZE))
+
+  // Keep the current page in range whenever the underlying list changes
+  // (extraction completes and a row leaves this list, a document is
+  // deleted, the list is refreshed, etc.) instead of landing on a blank page.
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, pageCount))
+  }, [pageCount])
+
+  const pagedDocuments = useMemo(
+    () => needsExtractionDocuments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [needsExtractionDocuments, page]
   )
 
   return (
@@ -886,109 +962,119 @@ export function ExtractionQueue({
           Nothing pending — every uploaded document has been extracted.
         </p>
       ) : (
-        <div className="space-y-3">
-          {needsExtractionDocuments.map((doc) => {
-            const isExtracting = extractingId === doc.id || doc.extraction_status === "extracting"
-            const isDeletingThis = isDeleting && deleteTargetId === doc.id
-            // Every OTHER document's buttons are also disabled while any
-            // one extraction is in flight — not just this row's own.
-            const blockThisRow = isExtractionActive && !isExtracting
+        <>
+          {/* Fixed-height rows: PAGE_SIZE items per page, no matter how many documents are pending. */}
+          <div className="space-y-3 min-h-[calc(var(--row-h,0px))]">
+            {pagedDocuments.map((doc) => {
+              const isExtracting = extractingId === doc.id || doc.extraction_status === "extracting"
+              const isDeletingThis = isDeleting && deleteTargetId === doc.id
+              // Every OTHER document's buttons are also disabled while any
+              // one extraction is in flight — not just this row's own.
+              const blockThisRow = isExtractionActive && !isExtracting
 
-            return (
-              <div
-                key={doc.id}
-                className={cn(
-                  "flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between transition-opacity",
-                  blockThisRow && "opacity-50"
-                )}
-              >
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="rounded-lg bg-primary/20 p-2 shrink-0">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-white truncate">{doc.document_name}</p>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Building2 className="h-3 w-3" />
-                        {doc.bank?.bank_name ?? `Bank #${doc.bank_id}`}
-                      </span>
-                      <span>{doc.category === "bank_policy" ? "Bank Policy" : "Case Study"}</span>
-                      <span>v{doc.version}</span>
+              return (
+                <div
+                  key={doc.id}
+                  className={cn(
+                    "flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between transition-opacity",
+                    blockThisRow && "opacity-50"
+                  )}
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="rounded-lg bg-primary/20 p-2 shrink-0">
+                      <Sparkles className="h-5 w-5 text-primary" />
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <DocStatusBadge status={doc.status} />
-                      <ExtractionBadge status={doc.extraction_status} />
+                    <div className="min-w-0">
+                      <p className="font-medium text-white truncate">{doc.document_name}</p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Building2 className="h-3 w-3" />
+                          {doc.bank?.bank_name ?? `Bank #${doc.bank_id}`}
+                        </span>
+                        <span>{doc.category === "bank_policy" ? "Bank Policy" : "Case Study"}</span>
+                        <span>v{doc.version}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <DocStatusBadge status={doc.status} />
+                        <ExtractionBadge status={doc.extraction_status} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <ExtractionProgressBar active={isExtracting} />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="bg-linear-to-r from-primary to-indigo-500"
+                        onClick={() => {
+                          if (blockThisRow) {
+                            showToast(EXTRACTION_BUSY_MESSAGE, "warning")
+                            return
+                          }
+                          onExtract(doc)
+                        }}
+                        disabled={isExtracting}
+                      >
+                        {isExtracting ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        {doc.extraction_status === "failed" ? "Retry Extract" : "Extract"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="border-white/10 bg-white/5 px-2"
+                        onClick={() => {
+                          if (blockThisRow) {
+                            showToast(EXTRACTION_BUSY_MESSAGE, "warning")
+                            return
+                          }
+                          onDownload(doc)
+                        }}
+                        title="Download original file"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10 px-2"
+                        onClick={() => {
+                          if (blockThisRow) {
+                            showToast(EXTRACTION_BUSY_MESSAGE, "warning")
+                            return
+                          }
+                          onDeleteRequest(doc)
+                        }}
+                        disabled={isDeletingThis}
+                        title="Delete document"
+                      >
+                        {isDeletingThis ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </div>
+              )
+            })}
+          </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <ExtractionProgressBar active={isExtracting} />
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-linear-to-r from-primary to-indigo-500"
-                      onClick={() => {
-                        if (blockThisRow) {
-                          showToast(EXTRACTION_BUSY_MESSAGE, "warning")
-                          return
-                        }
-                        onExtract(doc)
-                      }}
-                      disabled={isExtracting}
-                    >
-                      {isExtracting ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                      )}
-                      {doc.extraction_status === "failed" ? "Retry Extract" : "Extract"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="border-white/10 bg-white/5 px-2"
-                      onClick={() => {
-                        if (blockThisRow) {
-                          showToast(EXTRACTION_BUSY_MESSAGE, "warning")
-                          return
-                        }
-                        onDownload(doc)
-                      }}
-                      title="Download original file"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10 px-2"
-                      onClick={() => {
-                        if (blockThisRow) {
-                          showToast(EXTRACTION_BUSY_MESSAGE, "warning")
-                          return
-                        }
-                        onDeleteRequest(doc)
-                      }}
-                      disabled={isDeletingThis}
-                      title="Delete document"
-                    >
-                      {isDeletingThis ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            onPageChange={setPage}
+            totalItems={needsExtractionDocuments.length}
+          />
+        </>
       )}
     </GlassCard>
   )
@@ -1005,72 +1091,143 @@ export function ExtractionResults({ documents, isExtractionActive, showToast }: 
     (doc) => doc.extraction_status === "extracted" || doc.extraction_status === "reviewed"
   )
 
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredDocuments = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return hasResultsDocuments
+    return hasResultsDocuments.filter((doc) => {
+      const haystack = [
+        doc.document_name,
+        doc.bank?.bank_name,
+        doc.category === "bank_policy" ? "bank policy" : "case study",
+        doc.version,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [hasResultsDocuments, searchQuery])
+
+  const [page, setPage] = useState(1)
+  const pageCount = Math.max(1, Math.ceil(filteredDocuments.length / PAGE_SIZE))
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, pageCount))
+  }, [pageCount])
+
+  // Jump back to page 1 whenever the search query changes so results
+  // from a fresh search are never hidden on a stale page.
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery])
+
+  const pagedDocuments = useMemo(
+    () => filteredDocuments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredDocuments, page]
+  )
+
   return (
     <GlassCard className="p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">AI Extraction Results</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Review what the AI extracted, edit if needed, and approve or reject before it powers loan comparisons
           </p>
         </div>
+        {hasResultsDocuments.length > 0 && (
+          <div className="relative sm:w-64 shrink-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by document, bank…"
+              className="border-white/10 bg-white/5 pl-9"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {hasResultsDocuments.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
           No AI results yet — extract a document above to see results here.
         </p>
+      ) : filteredDocuments.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-6 text-center">
+          No results match "{searchQuery}".
+        </p>
       ) : (
-        <div className="space-y-3">
-          {hasResultsDocuments.map((doc) => (
-            <motion.div
-              key={doc.id}
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="rounded-lg bg-primary/20 p-2 shrink-0">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-medium text-white truncate">{doc.document_name}</p>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Building2 className="h-3 w-3" />
-                      {doc.bank?.bank_name ?? `Bank #${doc.bank_id}`}
-                    </span>
-                    <span>{doc.category === "bank_policy" ? "Bank Policy" : "Case Study"}</span>
-                  </div>
-                  <div className="mt-2">
-                    <ExtractionBadge status={doc.extraction_status} />
-                  </div>
-                </div>
-              </div>
-
-              <Link
-                href={`/admin/knowledge-base/${doc.id}/review`}
-                className="shrink-0"
-                onClick={(e) => {
-                  if (isExtractionActive) {
-                    e.preventDefault()
-                    showToast("Extraction in progress — please wait for it to finish.", "warning")
-                  }
-                }}
+        <>
+          <div className="space-y-3">
+            {pagedDocuments.map((doc) => (
+              <motion.div
+                key={doc.id}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between"
               >
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="border-white/10 bg-white/5 w-full sm:w-auto"
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="rounded-lg bg-primary/20 p-2 shrink-0">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-white truncate">{doc.document_name}</p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Building2 className="h-3 w-3" />
+                        {doc.bank?.bank_name ?? `Bank #${doc.bank_id}`}
+                      </span>
+                      <span>{doc.category === "bank_policy" ? "Bank Policy" : "Case Study"}</span>
+                    </div>
+                    <div className="mt-2">
+                      <ExtractionBadge status={doc.extraction_status} />
+                    </div>
+                  </div>
+                </div>
+
+                <Link
+                  href={`/admin/knowledge-base/${doc.id}/review`}
+                  className="shrink-0"
+                  onClick={(e) => {
+                    if (isExtractionActive) {
+                      e.preventDefault()
+                      showToast("Extraction in progress — please wait for it to finish.", "warning")
+                    }
+                  }}
                 >
-                  <Eye className="mr-1.5 h-3.5 w-3.5" />
-                  {doc.extraction_status === "reviewed" ? "View AI Results" : "Review AI Results"}
-                </Button>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-white/10 bg-white/5 w-full sm:w-auto"
+                  >
+                    <Eye className="mr-1.5 h-3.5 w-3.5" />
+                    {doc.extraction_status === "reviewed" ? "View AI Results" : "Review AI Results"}
+                  </Button>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            onPageChange={setPage}
+            totalItems={filteredDocuments.length}
+          />
+        </>
       )}
     </GlassCard>
   )

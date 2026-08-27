@@ -267,95 +267,103 @@ function ApplyContent() {
   }
 
   return (
-    <div className="w-full text-white py-8">
+    <div className="min-h-screen w-full text-white">
       <GlassSidebar role="applicant" />
-      <div className="max-w-7xl mx-auto px-4 relative z-10 ml-67">
-        <div className="mb-6 flex items-center justify-between">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 p-2 -ml-2 rounded-xl glass hover:bg-white/10 transition-colors text-muted-foreground hover:text-white"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span className="text-sm">Back to Dashboard</span>
-          </Link>
-          {editingApplicationId && (
-            <span className="text-xs px-3 py-1 rounded-full bg-[#1B4FBB]/20 border border-[#1B4FBB]/50 text-[#6366F1]">
-              Editing Application #{editingApplicationId}
-            </span>
-          )}
-        </div>
-
-        <StepIndicator currentStep={currentStep + 1} />
-
-        <GlassCard className="p-6 md:p-10 relative overflow-hidden" glow>
-          <AnimatePresence custom={direction} mode="wait">
-            <motion.div
-              key={currentStep}
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.3, ease: "easeInOut" }}
+      {/* ml-64 reserves space for the fixed sidebar (matches its w-64, same
+          pattern used on the Applications page). Centering of the form
+          within the remaining width happens on the inner div below via
+          max-w-7xl mx-auto — keeping that separate from this margin avoids
+          mixing an explicit ml with auto-centering on the same element,
+          which was pushing the form off-center with a large gap on the right. */}
+      <div className="ml-64 py-8">
+        <div className="max-w-[1600px] mx-auto px-4 relative z-10">
+          <div className="mb-6 flex items-center justify-between">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 p-2 -ml-2 rounded-xl glass hover:bg-white/10 transition-colors text-muted-foreground hover:text-white"
             >
-              <h2 className="text-2xl font-bold text-white mb-1">
-                {stepDefs[currentStep].title}
-              </h2>
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm">Back to Dashboard</span>
+            </Link>
+            {editingApplicationId && (
+              <span className="text-xs px-3 py-1 rounded-full bg-[#1B4FBB]/20 border border-[#1B4FBB]/50 text-[#6366F1]">
+                Editing Application #{editingApplicationId}
+              </span>
+            )}
+          </div>
 
-              <div className="mt-6">
-                {renderStepComponent()}
-              </div>
+          <StepIndicator currentStep={currentStep + 1} />
 
-              {stepError && (
+          <GlassCard className="p-6 md:p-10 relative overflow-hidden" glow>
+            <AnimatePresence custom={direction} mode="wait">
+              <motion.div
+                key={currentStep}
+                custom={direction}
+                variants={slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+              >
+                <h2 className="text-2xl font-bold text-white mb-1">
+                  {stepDefs[currentStep].title}
+                </h2>
+
                 <div className="mt-6">
-                  <ValidationMessage message={stepError} />
+                  {renderStepComponent()}
                 </div>
-              )}
 
-              {submitError && (
-                <div className="mt-6">
-                  <ValidationMessage message={submitError} />
-                </div>
-              )}
-
-              <div className="mt-8 flex items-center justify-between pt-6 border-t border-white/10">
-                <button
-                  type="button"
-                  onClick={handlePrev}
-                  disabled={currentStep === 0 || isSubmitting}
-                  className="px-5 py-2.5 rounded-xl border border-white/10 text-sm font-medium hover:bg-white/5 disabled:opacity-40 transition-colors"
-                >
-                  Previous
-                </button>
-
-                {currentStep === stepDefs.length - 1 ? (
-                  <MagneticButton
-                    variant="primary"
-                    onClick={handleSubmit}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Evaluating...
-                      </>
-                    ) : (
-                      <>
-                        {editingApplicationId ? "Update Application" : "Check Eligibility"}
-                        <Sparkles className="w-4 h-4 ml-2" />
-                      </>
-                    )}
-                  </MagneticButton>
-                ) : (
-                  <MagneticButton variant="primary" onClick={handleNext}>
-                    Next Step
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </MagneticButton>
+                {stepError && (
+                  <div className="mt-6">
+                    <ValidationMessage message={stepError} />
+                  </div>
                 )}
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </GlassCard>
+
+                {submitError && (
+                  <div className="mt-6">
+                    <ValidationMessage message={submitError} />
+                  </div>
+                )}
+
+                <div className="mt-8 flex items-center justify-between pt-6 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={handlePrev}
+                    disabled={currentStep === 0 || isSubmitting}
+                    className="px-5 py-2.5 rounded-xl border border-white/10 text-sm font-medium hover:bg-white/5 disabled:opacity-40 transition-colors"
+                  >
+                    Previous
+                  </button>
+
+                  {currentStep === stepDefs.length - 1 ? (
+                    <MagneticButton
+                      variant="primary"
+                      onClick={handleSubmit}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          Evaluating...
+                        </>
+                      ) : (
+                        <>
+                          {editingApplicationId ? "Update Application" : "Check Eligibility"}
+                          <Sparkles className="w-4 h-4 ml-2" />
+                        </>
+                      )}
+                    </MagneticButton>
+                  ) : (
+                    <MagneticButton variant="primary" onClick={handleNext}>
+                      Next Step
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </MagneticButton>
+                  )}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </GlassCard>
+        </div>
       </div>
     </div>
   )

@@ -658,8 +658,6 @@ export default function ResultsPage() {
                             ))}
                           </div>
 
-                          {/* Spacer pushes the button to the bottom of every card,
-                              regardless of how much content sits above it */}
                           <div className="flex-1" />
 
                           {/* Action */}
