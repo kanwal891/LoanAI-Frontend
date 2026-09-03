@@ -357,6 +357,12 @@ function formatTimestamp(iso?: string | null): string {
   })
 }
 
+/** What to show in the "Application" column — the applicant's name when we
+ *  have it, otherwise a readable fallback keyed off the application id. */
+function applicationLabel(item: ApplicationFeedbackListItem): string {
+  return item.applicant_name?.trim() || `Application #${item.application_id}`
+}
+
 /** What to show in the "response" column when there's no free-text comment. */
 function feedbackSummary(item: ApplicationFeedbackListItem): string {
   if (item.comment && item.comment.trim()) return item.comment.trim()
@@ -455,6 +461,7 @@ function UserActivityLog({ items, isLoading, error }: UserActivityLogProps) {
                 <tr className="border-b border-white/10">
                   <th className="pb-3 text-left font-medium text-muted-foreground">Timestamp</th>
                   <th className="pb-3 text-left font-medium text-muted-foreground">User</th>
+                  <th className="pb-3 text-left font-medium text-muted-foreground">Application</th>
                   <th className="pb-3 text-left font-medium text-muted-foreground">Action</th>
                 </tr>
               </thead>
@@ -472,6 +479,12 @@ function UserActivityLog({ items, isLoading, error }: UserActivityLogProps) {
                     </td>
                     <td className="py-3 pr-6 whitespace-nowrap">
                       <span className="text-white">{row.username ?? `User #${row.user_id}`}</span>
+                    </td>
+                    <td className="py-3 pr-6 whitespace-nowrap">
+                      <span className="text-white">{applicationLabel(row)}</span>
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        ({row.case_type === "balance_transfer" ? "BT" : "Fresh"})
+                      </span>
                     </td>
                     <td className="py-3">
                       <div className="flex items-center gap-2">

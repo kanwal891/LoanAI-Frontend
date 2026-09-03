@@ -493,10 +493,16 @@ export default function ResultsPage() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Recommended Banks</h2>
 
-              {/* AI Response Feedback — anchor for the popover */}
+              {/* AI Response Feedback — now a self-contained pill with a
+                  visible background/border and a text label so it reads as
+                  an interactive control at a glance instead of two loose
+                  gray icons in the corner. */}
               <div className="relative flex items-center gap-3 shrink-0">
                 <div className="flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-white/5 border border-white/10">
+                    <span className="text-xs text-muted-foreground mr-1 hidden sm:inline">
+                      Helpful?
+                    </span>
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.9 }}
@@ -504,10 +510,10 @@ export default function ResultsPage() {
                       disabled={feedbackBusy}
                       aria-pressed={feedback === "up"}
                       aria-label="Good response"
-                      className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
+                      className={`p-2.5 rounded-xl border transition-colors disabled:opacity-50 ${
                         feedback === "up"
-                          ? "bg-[#10B981]/20 text-[#10B981]"
-                          : "text-muted-foreground hover:text-white hover:bg-white/10"
+                          ? "bg-[#10B981]/20 border-[#10B981]/40 text-[#10B981]"
+                          : "border-white/10 text-white/70 hover:text-[#10B981] hover:border-[#10B981]/40 hover:bg-[#10B981]/10"
                       }`}
                     >
                       <ThumbsUp className={`w-5 h-5 ${feedback === "up" ? "fill-current" : ""}`} />
@@ -519,10 +525,10 @@ export default function ResultsPage() {
                       disabled={feedbackBusy}
                       aria-pressed={feedback === "down"}
                       aria-label="Bad response"
-                      className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
+                      className={`p-2.5 rounded-xl border transition-colors disabled:opacity-50 ${
                         feedback === "down"
-                          ? "bg-red-500/20 text-red-400"
-                          : "text-muted-foreground hover:text-white hover:bg-white/10"
+                          ? "bg-red-500/20 border-red-400/40 text-red-400"
+                          : "border-white/10 text-white/70 hover:text-red-400 hover:border-red-400/40 hover:bg-red-500/10"
                       }`}
                     >
                       <ThumbsDown className={`w-5 h-5 ${feedback === "down" ? "fill-current" : ""}`} />

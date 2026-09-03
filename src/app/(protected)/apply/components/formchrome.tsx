@@ -6,9 +6,6 @@ import type { LucideIcon } from "lucide-react"
 import { User, CreditCard, Building2, AlertCircle, Wallet } from "lucide-react"
 import { stepDefs } from "../form"
 
-// =========================================================================
-// StepIndicator — the top progress bar
-// =========================================================================
 
 const stepIcons: Record<number, LucideIcon> = {
   1: User,
@@ -74,20 +71,12 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
   )
 }
 
-// =========================================================================
-// ValidationMessage — form-level validation error banner
-// =========================================================================
 
 interface ValidationMessageProps {
   message: string | null
   onDismiss?: () => void
 }
 
-/**
- * Inline form-level validation message.
- * Left accent bar, icon badge, a small shake on entry to draw the eye
- * without being obnoxious, and an optional dismiss control.
- */
 export function ValidationMessage({ message, onDismiss }: ValidationMessageProps) {
   return (
     <AnimatePresence>

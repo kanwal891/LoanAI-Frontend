@@ -141,12 +141,8 @@ function ApplyContent() {
     async function loadData() {
       setIsLoadingData(true)
       try {
-        // Prefer the id in the URL; fall back to the one stashed in sessionStorage
-        // (e.g. when navigation to /apply happened without a query param).
         const resolvedEditId = editIdFromUrl ?? rawStoredId
 
-        // 1. Fast path: full payload already in sessionStorage (e.g. "Edit" clicked
-        //    from the dashboard/applications list, payload passed in-memory).
         if (rawPayload) {
           const parsedPayload = JSON.parse(rawPayload) as LoanApplicationRequest
           setForm(payloadToFormState(parsedPayload))
@@ -155,17 +151,11 @@ function ApplyContent() {
           sessionStorage.removeItem(EDIT_APPLICATION_ID_KEY)
           return
         }
-
-        // 2. Fallback: fetch from the backend (e.g. direct link or page refresh
-        //    with ?edit=<id> and no sessionStorage payload available).
         if (resolvedEditId) {
           const id = Number(resolvedEditId)
           setEditingApplicationId(id)
           if (typeof getApplication === "function") {
             const apiData = await getApplication(id)
-            // NOTE: getApplication() returns a SavedApplicationDetail wrapper —
-            // the actual LoanApplicationRequest-shaped form data lives in
-            // apiData.payload, not on apiData itself.
             if (apiData?.payload) {
               setForm(payloadToFormState(apiData.payload as LoanApplicationRequest))
             }
@@ -269,12 +259,6 @@ function ApplyContent() {
   return (
     <div className="min-h-screen w-full text-white">
       <GlassSidebar role="applicant" />
-      {/* ml-64 reserves space for the fixed sidebar (matches its w-64, same
-          pattern used on the Applications page). Centering of the form
-          within the remaining width happens on the inner div below via
-          max-w-7xl mx-auto — keeping that separate from this margin avoids
-          mixing an explicit ml with auto-centering on the same element,
-          which was pushing the form off-center with a large gap on the right. */}
       <div className="ml-64 py-8">
         <div className="max-w-[1600px] mx-auto px-4 relative z-10">
           <div className="mb-6 flex items-center justify-between">
