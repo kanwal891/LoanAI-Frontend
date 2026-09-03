@@ -148,9 +148,6 @@ function useApplicationFeedback() {
         if (cancelled) return
         const safeItems = res.items ?? []
         setItems(safeItems)
-        // Prefer the backend's counts, but fall back to counting the items
-        // ourselves if those fields are missing or named differently on the
-        // actual response — keeps the page working even on a schema mismatch.
         const likeFromItems = safeItems.filter((i) => i.sentiment === "like").length
         const dislikeFromItems = safeItems.filter((i) => i.sentiment === "dislike").length
         setLikeCount(typeof res.likes === "number" ? res.likes : likeFromItems)
@@ -357,13 +354,10 @@ function formatTimestamp(iso?: string | null): string {
   })
 }
 
-/** What to show in the "Application" column — the applicant's name when we
- *  have it, otherwise a readable fallback keyed off the application id. */
 function applicationLabel(item: ApplicationFeedbackListItem): string {
   return item.applicant_name?.trim() || `Application #${item.application_id}`
 }
 
-/** What to show in the "response" column when there's no free-text comment. */
 function feedbackSummary(item: ApplicationFeedbackListItem): string {
   if (item.comment && item.comment.trim()) return item.comment.trim()
   const caseLabel =
@@ -402,7 +396,6 @@ function UserActivityLog({ items, isLoading, error }: UserActivityLogProps) {
     [sorted, filter]
   )
 
-  // Keep the current page in range whenever the filtered set shrinks/grows.
   useEffect(() => {
     setPage(1)
   }, [filter])
@@ -666,10 +659,10 @@ export default function AdminDashboardPage() {
               <motion.div key={stat.title} variants={itemVariants}>
                 <GlassCard
                   className={cn(
-                    "p-5 transition-all",
-                    clickable && "cursor-pointer hover:scale-[1.01] hover:border-white/20"
+                    "p-5 transition-all hover:scale-[1.01] hover:border-white/20",
+                    clickable && "cursor-pointer"
                   )}
-                  hover={clickable}
+                  hover
                   onClick={() => clickable && setSelectedCard(stat.title as CardKey)}
                 >
                   <div className="flex items-start justify-between">
