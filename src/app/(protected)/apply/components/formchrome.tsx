@@ -98,10 +98,9 @@ export function ValidationMessage({ message, onDismiss }: ValidationMessageProps
           className="mt-6 relative z-10 overflow-hidden"
         >
           <div className="relative flex items-start gap-3 rounded-xl border border-red-500/25 bg-red-500/[0.07] pl-4 pr-3 py-3.5">
-            {/* Accent bar */}
+
             <span className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-red-400/70" />
 
-            {/* Icon badge */}
             <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-red-500/15">
               <AlertTriangle className="h-3.5 w-3.5 text-red-300" />
             </span>
