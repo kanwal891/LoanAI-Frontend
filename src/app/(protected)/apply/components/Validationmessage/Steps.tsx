@@ -151,17 +151,6 @@ function ExistingLoanCard({
   )
 }
 
-// Type of Profession select where "Government Employee" expands an
-// inline accordion of grade options (Grade 1-4) directly beneath that
-// row, rather than a hover-triggered side flyout. This keeps the whole
-// interaction inside one dropdown, works identically on touch and
-// pointer devices, and avoids the flyout's left/right flip math.
-//
-// Still rendered via a portal into document.body: the page wraps this
-// form in a container with `overflow-hidden` (for the step-transition
-// animation), which would otherwise clip the dropdown. Position is
-// computed from the trigger's bounding rect and kept in sync on
-// scroll/resize while open.
 function ProfessionDropdown({ form, update }: StepProps) {
   const [open, setOpen] = useState(false)
   const [govtExpanded, setGovtExpanded] = useState(false)
@@ -309,7 +298,6 @@ function ProfessionDropdown({ form, update }: StepProps) {
 
   return (
     <div className="relative">
-      <label className="text-xs text-[#6366F1] mb-1.5 block px-1">Type of Profession</label>
       <button
         ref={triggerRef}
         type="button"
