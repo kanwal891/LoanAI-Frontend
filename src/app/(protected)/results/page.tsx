@@ -23,10 +23,6 @@ import { AnimatedCounter } from "@/components/animated-counter"
 import { CircularProgress } from "@/components/circular-progress"
 import { FeedbackPopover } from "@/components/feedback-popover"
 
-// -----------------------------------------------------------------------
-// Eligibility API — adjust the import path below if userAPI.ts lives
-// somewhere else in your project.
-// -----------------------------------------------------------------------
 import {
   isBalanceTransferResponse,
   getApplication,
@@ -42,7 +38,6 @@ import {
 
 type FeedbackValue = "up" | "down" | null
 
-// sessionStorage keys shared with /apply for the "Update Application" flow
 const EDIT_PAYLOAD_KEY = "eligibilityEditPayload"
 const EDIT_APPLICATION_ID_KEY = "eligibilityEditApplicationId"
 
@@ -50,18 +45,12 @@ const EDIT_APPLICATION_ID_KEY = "eligibilityEditApplicationId"
 const toSentiment = (v: "up" | "down"): FeedbackSentiment => (v === "up" ? "like" : "dislike")
 const fromSentiment = (s: FeedbackSentiment): FeedbackValue => (s === "like" ? "up" : "down")
 
-/** Format a rupee amount as "₹XX L" / "₹X.XX Cr", matching the design's shorthand style. */
 function formatINR(amount: number): string {
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`
   if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)} L`
   return `₹${amount.toLocaleString("en-IN")}`
 }
 
-/**
- * Interest rate display helper — prefers the backend's pre-formatted range
- * string (e.g. "10.25% - 12.99%") since some policies quote a range rather
- * than a flat rate. Falls back to the single number, then to an em dash.
- */
 function formatInterestRate(
   display?: string | null,
   flat?: number | null
@@ -115,8 +104,6 @@ export default function ResultsPage() {
     }
   }, [])
 
-  // Load the current user's existing feedback for this application (if any)
-  // so the thumbs up/down buttons reflect prior state on revisit/refresh.
   useEffect(() => {
     const applicationId = result?.application_id
     if (applicationId == null) return
@@ -144,9 +131,6 @@ export default function ResultsPage() {
     [recommendations]
   )
 
-  // "Best rate" is still picked by the numeric low-end (interest_rate), but
-  // displayed using that bank's own range string so it doesn't mismatch
-  // what's shown on its card.
   const bestRateRecommendation = useMemo(() => {
     const withRates = recommendations.filter((r) => r.interest_rate != null)
     if (withRates.length === 0) return null
@@ -162,9 +146,6 @@ export default function ResultsPage() {
     return amounts.length ? Math.max(...amounts) : null
   }, [recommendations])
 
-  // Average across banks. Prefers each bank's range midpoint (min+max)/2
-  // when interest_rate_min/max are available, since interest_rate alone is
-  // just the low end of the range and understates the true average.
   const avgInterestRate = useMemo(() => {
     const rates = recommendations
       .map((r) => {
@@ -182,8 +163,6 @@ export default function ResultsPage() {
   const banksEvaluated = result?.banks_evaluated ?? 0
   const eligibleCount = recommendations.length
 
-  // Simple full-detail lookup (foir_percent / foir_source live on both
-  // FreshLoanBankResult and BalanceTransferBankResult).
   const foirResult = useMemo(() => {
     const results = (result?.results ?? []) as Array<{
       eligible: boolean
@@ -195,16 +174,6 @@ export default function ResultsPage() {
 
   const derived = isBT ? (result as BalanceTransferResponse).derived ?? {} : null
 
-  /**
-   * Clicking a thumb submits the vote immediately (like/dislike), matching
-   * the ChatGPT-style pattern — the API call happens on click, not on
-   * popover submit. The popover then opens purely to collect an *optional*
-   * comment; if the user closes it without typing anything, the vote is
-   * still saved.
-   *
-   * Clicking the already-active thumb undoes the vote (DELETE), same as
-   * before.
-   */
   const handleFeedback = async (value: "up" | "down") => {
     const applicationId = result?.application_id
     setFeedbackError(null)
@@ -229,23 +198,17 @@ export default function ResultsPage() {
       return
     }
 
-    // New vote — reflect it in the UI right away.
     setFeedback(value)
     setFeedbackSubmitted(false)
     setFeedbackText("")
 
     if (applicationId == null) {
-      // No saved application to attach feedback to — just open the popover
-      // (comment) but there's nothing to POST yet.
       setPopoverOpen(true)
       return
     }
 
     setFeedbackBusy(true)
     try {
-      // Submit the vote immediately with no comment. This is what makes it
-      // show up on the admin dashboard right away, even if the user never
-      // opens/uses the comment popover.
       await submitApplicationFeedback(applicationId, {
         sentiment: toSentiment(value),
         comment: null,
@@ -274,13 +237,7 @@ export default function ResultsPage() {
     }, 200)
   }
 
-  /**
-   * Fires when the user submits the popover's comment box. The vote itself
-   * was already saved in handleFeedback, so this is effectively an update
-   * that attaches the free-text comment to the existing feedback row.
-   * (Assumes submitApplicationFeedback is an upsert on the backend —
-   * same application_id + user overwrites rather than duplicates.)
-   */
+ 
   const handleSubmitFeedback = async () => {
     const applicationId = result?.application_id
     if (feedback == null || applicationId == null || !feedbackText.trim()) {
@@ -308,13 +265,6 @@ export default function ResultsPage() {
     }
   }
 
-  /**
-   * "Update Application" — fetches the full saved application (its original
-   * form payload) from the backend, stashes it in sessionStorage for /apply
-   * to pick up on mount, then navigates there. If there's no application_id
-   * (e.g. the low-level calc was used, or the row failed to save), falls
-   * back to a blank /apply.
-   */
   const handleUpdateApplication = async () => {
   setEditError(null)
 
@@ -328,8 +278,6 @@ export default function ResultsPage() {
     const detail = await getApplication(result.application_id)
     sessionStorage.setItem(EDIT_PAYLOAD_KEY, JSON.stringify(detail.payload))
     sessionStorage.setItem(EDIT_APPLICATION_ID_KEY, String(detail.id))
-    // `t` makes the URL unique per click, so Next.js's router cache can't
-    // serve back a stale /apply instance whose mount effect already ran.
     router.push(`/apply?edit=${detail.id}&t=${Date.now()}`)
   } catch (err) {
     if (err instanceof ApiError) {
@@ -342,9 +290,6 @@ export default function ResultsPage() {
   }
 }
 
-  // -----------------------------------------------------------------------
-  // No data yet (direct nav to /results, or sessionStorage cleared)
-  // -----------------------------------------------------------------------
   if (hasLoaded && !result) {
     return (
       <main className="min-h-screen bg-[#080B14]">
@@ -374,14 +319,8 @@ export default function ResultsPage() {
     <main className="min-h-screen bg-[#080B14]">
       <GlassNavbar variant="dashboard" />
       
-      {/* pt-28 (was pt-20) gives extra clearance below the fixed navbar so the
-          Back button row below doesn't sit underneath it. */}
       <div className="pt-28 pb-12">
         <div className="max-w-7xl mx-auto px-4">
-          {/* Back button lives in its own row with relative z-20, kept fully
-              separate from the hero section's AuroraBackground (which is
-              absolutely positioned within its own "relative" section below)
-              so the two never overlap. */}
           <div className="relative z-20 mb-6">
             <button
               type="button"
@@ -466,11 +405,6 @@ export default function ResultsPage() {
                   <div className="text-left">
                     <p className="text-sm text-muted-foreground mb-1">Best Interest Rate</p>
                     {bestRateRecommendation?.interest_rate_display ? (
-                      // Range string doesn't fit AnimatedCounter (it animates a
-                      // single number), so render it as static text instead.
-                      // Smaller size than the single-number case below, since
-                      // "10.25% - 12.99%" is ~2.5x longer than "10.25%" and
-                      // wraps awkwardly at text-3xl.
                       <p className="text-xl md:text-2xl font-bold text-white leading-tight whitespace-nowrap">
                         {bestRateRecommendation.interest_rate_display}
                       </p>
@@ -493,10 +427,6 @@ export default function ResultsPage() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Recommended Banks</h2>
 
-              {/* AI Response Feedback — now a self-contained pill with a
-                  visible background/border and a text label so it reads as
-                  an interactive control at a glance instead of two loose
-                  gray icons in the corner. */}
               <div className="relative flex items-center gap-3 shrink-0">
                 <div className="flex flex-col items-end gap-1">
                   <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-white/5 border border-white/10">
@@ -574,8 +504,6 @@ export default function ResultsPage() {
                       onClick={() => setSelectedBank(bank.bank_id)}
                       glow
                     >
-                      {/* Reserved badge slot — same height whether or not a badge is shown,
-                          so every card starts its content at the same vertical position. */}
                       <div className="mb-4 h-7">
                         {bank.is_top_recommendation && (
                           <div className="inline-flex px-3 py-1 rounded-full bg-gradient-to-r from-[#FF6B35] to-[#FF8F6B] text-xs font-medium text-white">
@@ -633,7 +561,6 @@ export default function ResultsPage() {
                             </div>
                           </div>
 
-                          {/* BT-only: principal being transferred + fresh top-up */}
                           {isBT && (bank.bt_principal_total != null || bank.fresh_loan_topup != null) && (
                             <div className="grid grid-cols-2 gap-4 pb-4 -mt-2">
                               {bank.bt_principal_total != null && (
@@ -651,8 +578,6 @@ export default function ResultsPage() {
                             </div>
                           )}
 
-                          {/* Features — fixed 2-row wrap height so 3-feature and 2-feature
-                              cards still take up the same vertical space */}
                           <div className="flex flex-wrap gap-2 mb-4 min-h-14 content-start">
                             {bank.feature_tags.map((feature) => (
                               <span

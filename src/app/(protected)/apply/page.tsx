@@ -29,6 +29,9 @@ import {
   EXISTING_LOAN_TYPE_MAP,
   EXPECTED_LOAN_TYPE_MAP,
   COMPANY_TYPE_MAP,
+  PROFESSION_TYPE_MAP,
+  GOVT_GRADE_MAP,
+  LOCATION_TYPE_MAP,
 } from "./form"
 
 import { StepIndicator, ValidationMessage } from "./components/formchrome"
@@ -60,6 +63,9 @@ function invertMap<T extends string>(map: Record<string, T>): Record<string, str
 const EXISTING_LOAN_TYPE_MAP_REVERSE = invertMap(EXISTING_LOAN_TYPE_MAP)
 const EXPECTED_LOAN_TYPE_MAP_REVERSE = invertMap(EXPECTED_LOAN_TYPE_MAP)
 const COMPANY_TYPE_MAP_REVERSE = invertMap(COMPANY_TYPE_MAP)
+const PROFESSION_TYPE_MAP_REVERSE = invertMap(PROFESSION_TYPE_MAP)
+const GOVT_GRADE_MAP_REVERSE = invertMap(GOVT_GRADE_MAP)
+const LOCATION_TYPE_MAP_REVERSE = invertMap(LOCATION_TYPE_MAP)
 
 function numToStr(value: number | null | undefined): string {
   return value == null ? "" : String(value)
@@ -69,41 +75,55 @@ function boolToYesNo(value: boolean | null | undefined): string {
   return value ? "yes" : "no"
 }
 
-function payloadToFormState(payload: LoanApplicationRequest): ApplyFormState {
-  const isBT = payload.case_type === "balance_transfer"
-
-  const existingLoans: ExistingLoan[] = (payload.existing_loans || []).map((loan, idx) => ({
+function mapApiLoanToForm(loan: any, idx: number): ExistingLoan {
+  return {
     id: String(idx + 1),
     type: EXISTING_LOAN_TYPE_MAP_REVERSE[loan.loan_type] || "personal-loan",
     amount: numToStr(loan.loan_amount_outstanding),
     bankName: loan.current_bank_name || "",
     interestRate: numToStr(loan.current_interest_rate),
     startDate: loan.loan_disbursement_date || "",
-    principalOutstanding: numToStr(loan.principal_outstanding),
     foreclosureAvailable: boolToYesNo(loan.foreclosure_available),
     currentEMI: numToStr(loan.current_emi),
     emiBounce: boolToYesNo(loan.any_emi_bounce),
-  }))
+  }
+}
+
+function payloadToFormState(payload: LoanApplicationRequest): ApplyFormState {
+  const isBT = payload.case_type === "balance_transfer"
+
+  const mappedLoans: ExistingLoan[] = (payload.existing_loans || []).map(mapApiLoanToForm)
+
+  const existingLoans = isBT ? mappedLoans : []
+  const existingLoansFresh = !isBT ? mappedLoans : []
+
+  const personal = payload.personal as any
 
   return {
     name: payload.personal?.full_name || "",
     age: numToStr(payload.personal?.age),
     pincode: payload.personal?.pincode || "",
     caseType: isBT ? "bt" : "fresh",
+    professionType: PROFESSION_TYPE_MAP_REVERSE[personal?.profession_type || ""] || "",
+    govtGrade: GOVT_GRADE_MAP_REVERSE[personal?.government_employee_grade || ""] || "",
+    govtGradeDescription: personal?.government_employee_grade_description || "",
+    location: LOCATION_TYPE_MAP_REVERSE[personal?.location_type || ""] || "",
 
     existingLoans: existingLoans.length > 0 ? existingLoans : [emptyExistingLoan("1")],
 
     expectedLoanType: EXPECTED_LOAN_TYPE_MAP_REVERSE[payload.loan_requirements?.expected_loan_type || ""] || "",
-    expectedInterestRate: numToStr(payload.loan_requirements?.expected_interest_rate),
-    expectedEMI: numToStr(payload.loan_requirements?.expected_emi),
     expectedPrincipal: numToStr(payload.loan_requirements?.principal_amount_required),
+    hasExistingLoan: existingLoansFresh.length > 0 ? "yes" : "no",
+    existingLoansFresh: existingLoansFresh.length > 0 ? existingLoansFresh : [emptyExistingLoan("1")],
 
     companyType: COMPANY_TYPE_MAP_REVERSE[payload.employment?.company_type || ""] || "",
+    companyName: (payload.employment as any)?.company_name || "",
     companyAge: numToStr(payload.employment?.company_age_years),
     salaryCreditType: payload.employment?.salary_credit_type || "",
 
     cibilScore: numToStr(payload.credit_history?.cibil_score),
     enquiries: numToStr(payload.credit_history?.enquiries_last_3_months),
+    enquiries30Days: numToStr(payload.credit_history?.enquiries_last_30_days),
     bounceLatest: boolToYesNo(payload.credit_history?.bounce_latest_month),
     overduePending: boolToYesNo(payload.credit_history?.any_overdue_pending),
     pastDelayed: boolToYesNo(payload.credit_history?.past_delayed_payments),
@@ -117,6 +137,8 @@ function payloadToFormState(payload: LoanApplicationRequest): ApplyFormState {
     tdsDeducted: boolToYesNo(payload.salary_banking?.tds_deducted),
     officialMailAvailable: boolToYesNo(payload.salary_banking?.official_mail_available),
     homeLoanHistory: boolToYesNo(payload.salary_banking?.home_loan_history_or_running),
+    form26ASAvailable: boolToYesNo((payload.salary_banking as any)?.form_26as_available),
+    form16Available: boolToYesNo((payload.salary_banking as any)?.form_16_available),
   }
 }
 

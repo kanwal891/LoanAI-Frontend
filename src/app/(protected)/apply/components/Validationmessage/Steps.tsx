@@ -1,7 +1,22 @@
 "use client"
 
+import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
-import { Plus, Trash2, Banknote, Building2, Percent, User, Calendar, MapPin, Wallet } from "lucide-react"
+import {
+  Plus,
+  Trash2,
+  Banknote,
+  Building2,
+  Percent,
+  User,
+  Calendar,
+  MapPin,
+  Wallet,
+  Briefcase,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react"
 import { FloatingInput } from "@/components/floating-input"
 import { FloatingSelect } from "@/components/floating-select"
 import { SegmentedToggle } from "@/components/segmented-toggle"
@@ -13,6 +28,9 @@ import {
   companyTypeOptions,
   salaryCreditOptions,
   incentiveFrequencyOptions,
+  professionTypeOptions,
+  govtGradeOptions,
+  locationOptions,
   type ExistingLoan,
   type StepProps,
 } from "../../form"
@@ -38,11 +56,330 @@ function generateUniqueId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
+// Shared editable card for one existing loan entry — used both for
+// Balance Transfer loans and for the "existing loan" details captured on
+// a Fresh Case.
+function ExistingLoanCard({
+  loan,
+  index,
+  canDelete,
+  onRemove,
+  onChange,
+}: {
+  loan: ExistingLoan
+  index: number
+  canDelete: boolean
+  onRemove: () => void
+  onChange: <K extends keyof ExistingLoan>(field: K, value: ExistingLoan[K]) => void
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="p-6 rounded-xl glass border border-white/10"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-medium text-white">Loan {index + 1}</h3>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
+            aria-label={`Delete Loan ${index + 1}`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <FloatingSelect
+          label="Type of Loan"
+          options={loanTypeOptions}
+          value={loan.type}
+          onChange={(v) => onChange("type", v)}
+        />
+        <FloatingInput
+          label="Loan Amount Outstanding"
+          value={loan.amount}
+          onChange={(v) => onChange("amount", stripNegative(v))}
+          icon={<Banknote className="w-5 h-5" />}
+        />
+        <FloatingInput
+          label="Current Bank Name"
+          value={loan.bankName}
+          onChange={(v) => onChange("bankName", v)}
+          icon={<Building2 className="w-5 h-5" />}
+        />
+        <FloatingInput
+          label="Current Rate of Interest (%)"
+          value={loan.interestRate}
+          onChange={(v) => onChange("interestRate", stripNegative(v))}
+          icon={<Percent className="w-5 h-5" />}
+        />
+        <FloatingInput
+          label="Loan Disbursement Date"
+          value={loan.startDate}
+          onChange={(v) => onChange("startDate", v)}
+          placeholder="DD/MM/YYYY"
+          showCalendar
+        />
+        <FloatingInput
+          label="Current EMI"
+          value={loan.currentEMI}
+          onChange={(v) => onChange("currentEMI", stripNegative(v))}
+          prefix="₹"
+        />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4 mt-4">
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">Foreclosure Available</label>
+          <SegmentedToggle
+            options={yesNo}
+            value={loan.foreclosureAvailable}
+            onChange={(v) => onChange("foreclosureAvailable", v)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">Any EMI Bounce</label>
+          <SegmentedToggle options={yesNo} value={loan.emiBounce} onChange={(v) => onChange("emiBounce", v)} />
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Type of Profession select where "Government Employee" expands an
+// inline accordion of grade options (Grade 1-4) directly beneath that
+// row, rather than a hover-triggered side flyout. This keeps the whole
+// interaction inside one dropdown, works identically on touch and
+// pointer devices, and avoids the flyout's left/right flip math.
+//
+// Still rendered via a portal into document.body: the page wraps this
+// form in a container with `overflow-hidden` (for the step-transition
+// animation), which would otherwise clip the dropdown. Position is
+// computed from the trigger's bounding rect and kept in sync on
+// scroll/resize while open.
+function ProfessionDropdown({ form, update }: StepProps) {
+  const [open, setOpen] = useState(false)
+  const [govtExpanded, setGovtExpanded] = useState(false)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 })
+  const [mounted, setMounted] = useState(false)
+
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => setMounted(true), [])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    function updatePosition() {
+      if (!triggerRef.current) return
+      const rect = triggerRef.current.getBoundingClientRect()
+      setMenuPos({ top: rect.bottom + 8, left: rect.left, width: rect.width })
+    }
+    updatePosition()
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+    return () => {
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [open])
+
+  // When reopened, start with the grade list expanded if Govt Employee
+  // is already the current selection, so the user isn't hunting for it.
+  useEffect(() => {
+    if (open) setGovtExpanded(form.professionType === "govt-employee")
+  }, [open, form.professionType])
+
+  const isGovtEmployee = form.professionType === "govt-employee"
+  const selectedGrade = govtGradeOptions.find((g) => g.value === form.govtGrade)
+
+  const triggerLabel = isGovtEmployee
+    ? selectedGrade
+      ? `Government Employee — ${selectedGrade.label}`
+      : "Government Employee"
+    : professionTypeOptions.find((p) => p.value === form.professionType)?.label || ""
+
+  const selectProfession = (value: string) => {
+    update("professionType", value)
+    if (value === "govt-employee") {
+      // Don't close the menu yet — let them pick a grade in place.
+      setGovtExpanded(true)
+      return
+    }
+    update("govtGrade", "")
+    update("govtGradeDescription", "")
+    setOpen(false)
+    setGovtExpanded(false)
+  }
+
+  const selectGrade = (grade: string) => {
+    update("professionType", "govt-employee")
+    update("govtGrade", grade)
+    setOpen(false)
+    setGovtExpanded(false)
+  }
+
+  const menu = (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          ref={menuRef}
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.15 }}
+          style={{
+            position: "fixed",
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            zIndex: 100,
+            maxHeight: "min(320px, calc(100vh - " + menuPos.top + "px - 16px))",
+          }}
+          className="rounded-xl border border-white/10 bg-[#0B1220] shadow-xl overflow-y-auto overscroll-contain"
+        >
+          {professionTypeOptions.map((opt) => {
+            const isGovtRow = opt.value === "govt-employee"
+            return (
+              <div key={opt.value}>
+                <button
+                  type="button"
+                  onClick={() => (isGovtRow ? setGovtExpanded((v) => !v) : selectProfession(opt.value))}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/5 transition-colors ${
+                    form.professionType === opt.value ? "text-white bg-white/5" : "text-muted-foreground"
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  {isGovtRow && (
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${govtExpanded ? "rotate-180" : ""}`}
+                    />
+                  )}
+                </button>
+
+                {isGovtRow && (
+                  <AnimatePresence initial={false}>
+                    {govtExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="overflow-hidden bg-black/20"
+                      >
+                        {govtGradeOptions.map((grade) => (
+                          <button
+                            key={grade.value}
+                            type="button"
+                            onClick={() => selectGrade(grade.value)}
+                            className={`w-full pl-8 pr-4 py-2.5 text-sm text-left hover:bg-white/5 transition-colors ${
+                              form.govtGrade === grade.value ? "text-white bg-white/5" : "text-muted-foreground"
+                            }`}
+                          >
+                            {grade.label}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                )}
+              </div>
+            )
+          })}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+
+  return (
+    <div className="relative">
+      <label className="text-xs text-[#6366F1] mb-1.5 block px-1">Type of Profession</label>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-3 px-4 py-4 rounded-xl glass border border-white/10 hover:border-white/20 transition-colors text-left"
+      >
+        <Briefcase className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+        <span className={`flex-1 text-sm font-medium ${triggerLabel ? "text-white" : "text-muted-foreground"}`}>
+          {triggerLabel || "Select profession"}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {mounted && createPortal(menu, document.body)}
+    </div>
+  )
+}
+
+// Radio-button group, styled to match the rest of the form. Options
+// stretch to fill the row (flex-1) instead of hugging their label text,
+// so the buttons read as wider, easier targets — falls back to wrapping
+// on narrow screens via min-width.
+function RadioGroup({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-3">
+      {options.map((opt) => {
+        const selected = value === opt.value
+        return (
+          <label
+            key={opt.value}
+            className={`flex flex-1 min-w-[140px] items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl border cursor-pointer transition-colors ${
+              selected ? "border-[#1B4FBB]/60 bg-[#1B4FBB]/10" : "border-white/10 hover:border-white/20"
+            }`}
+          >
+            <span
+              className={`flex items-center justify-center w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors ${
+                selected ? "border-[#6366F1]" : "border-white/30"
+              }`}
+            >
+              {selected && <span className="w-2 h-2 rounded-full bg-[#6366F1]" />}
+            </span>
+            <input
+              type="radio"
+              className="sr-only"
+              checked={selected}
+              onChange={() => onChange(opt.value)}
+            />
+            <span className={`text-sm ${selected ? "text-white" : "text-muted-foreground"}`}>{opt.label}</span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
+
 // =========================================================================
 // Step 1 — Personal Details
 // =========================================================================
 
 export function PersonalDetailsStep({ form, update }: StepProps) {
+  const isGovtEmployee = form.professionType === "govt-employee"
+
   return (
     <div className="space-y-6">
       <div>
@@ -67,12 +404,39 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
         />
       </div>
 
-      <FloatingInput
-        label="Pincode"
-        value={form.pincode}
-        onChange={(v) => update("pincode", v)}
-        icon={<MapPin className="w-5 h-5" />}
-      />
+      <div className="grid md:grid-cols-2 gap-6">
+        <FloatingInput
+          label="Pincode"
+          value={form.pincode}
+          onChange={(v) => update("pincode", v)}
+          icon={<MapPin className="w-5 h-5" />}
+        />
+
+        <div>
+          <label className="text-xs text-[#6366F1] mb-1.5 block px-1">Location</label>
+          <RadioGroup options={locationOptions} value={form.location} onChange={(v) => update("location", v)} />
+        </div>
+      </div>
+
+      <ProfessionDropdown form={form} update={update} />
+
+      <AnimatePresence>
+        {isGovtEmployee && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <FloatingInput
+              label="Description (optional)"
+              value={form.govtGradeDescription}
+              onChange={(v) => update("govtGradeDescription", v)}
+              placeholder="Any additional details, if required"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div>
         <label className="text-sm text-muted-foreground mb-3 block">Loan Type</label>
@@ -113,6 +477,23 @@ export function LoanDetailsStep({ form, update }: StepProps) {
     )
   }
 
+  const addFreshExistingLoan = () => {
+    update("existingLoansFresh", [...form.existingLoansFresh, emptyExistingLoan(generateUniqueId())])
+  }
+
+  const removeFreshExistingLoan = (id: string) => {
+    if (form.existingLoansFresh.length > 1) {
+      update("existingLoansFresh", form.existingLoansFresh.filter((loan) => loan.id !== id))
+    }
+  }
+
+  const updateFreshExistingLoan = <K extends keyof ExistingLoan>(id: string, field: K, value: ExistingLoan[K]) => {
+    update(
+      "existingLoansFresh",
+      form.existingLoansFresh.map((loan) => (loan.id === id ? { ...loan, [field]: value } : loan))
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -133,92 +514,14 @@ export function LoanDetailsStep({ form, update }: StepProps) {
             className="space-y-6 overflow-hidden"
           >
             {form.existingLoans.map((loan, index) => (
-              <motion.div
+              <ExistingLoanCard
                 key={loan.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="p-6 rounded-xl glass border border-white/10"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-medium text-white">Loan {index + 1}</h3>
-                  {form.existingLoans.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeExistingLoan(loan.id)}
-                      className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
-                      aria-label={`Delete Loan ${index + 1}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <FloatingSelect
-                    label="Type of Loan"
-                    options={loanTypeOptions}
-                    value={loan.type}
-                    onChange={(v) => updateExistingLoan(loan.id, "type", v)}
-                  />
-                  <FloatingInput
-                    label="Loan Amount Outstanding"
-                    value={loan.amount}
-                    onChange={(v) => updateExistingLoan(loan.id, "amount", stripNegative(v))}
-                    icon={<Banknote className="w-5 h-5" />}
-                  />
-                  <FloatingInput
-                    label="Current Bank Name"
-                    value={loan.bankName}
-                    onChange={(v) => updateExistingLoan(loan.id, "bankName", v)}
-                    icon={<Building2 className="w-5 h-5" />}
-                  />
-                  <FloatingInput
-                    label="Current Rate of Interest (%)"
-                    value={loan.interestRate}
-                    onChange={(v) => updateExistingLoan(loan.id, "interestRate", stripNegative(v))}
-                    icon={<Percent className="w-5 h-5" />}
-                  />
-                  <FloatingInput
-                    label="Loan Disbursement Date"
-                    value={loan.startDate}
-                    onChange={(v) => updateExistingLoan(loan.id, "startDate", v)}
-                    placeholder="DD/MM/YYYY"
-                    showCalendar
-                  />
-                  <FloatingInput
-                    label="Principal Outstanding"
-                    value={loan.principalOutstanding}
-                    onChange={(v) => updateExistingLoan(loan.id, "principalOutstanding", stripNegative(v))}
-                    prefix="₹"
-                  />
-                  <FloatingInput
-                    label="Current EMI"
-                    value={loan.currentEMI}
-                    onChange={(v) => updateExistingLoan(loan.id, "currentEMI", stripNegative(v))}
-                    prefix="₹"
-                  />
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-2 block">Foreclosure Available</label>
-                    <SegmentedToggle
-                      options={yesNo}
-                      value={loan.foreclosureAvailable}
-                      onChange={(v) => updateExistingLoan(loan.id, "foreclosureAvailable", v)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-2 block">Any EMI Bounce</label>
-                    <SegmentedToggle
-                      options={yesNo}
-                      value={loan.emiBounce}
-                      onChange={(v) => updateExistingLoan(loan.id, "emiBounce", v)}
-                    />
-                  </div>
-                </div>
-              </motion.div>
+                loan={loan}
+                index={index}
+                canDelete={form.existingLoans.length > 1}
+                onRemove={() => removeExistingLoan(loan.id)}
+                onChange={(field, value) => updateExistingLoan(loan.id, field, value)}
+              />
             ))}
 
             <motion.button
@@ -248,24 +551,54 @@ export function LoanDetailsStep({ form, update }: StepProps) {
                 onChange={(v) => update("expectedLoanType", v)}
               />
               <FloatingInput
-                label="Expected Rate of Interest (%)"
-                value={form.expectedInterestRate}
-                onChange={(v) => update("expectedInterestRate", stripNegative(v))}
-                icon={<Percent className="w-5 h-5" />}
-              />
-              <FloatingInput
-                label="Expected EMI"
-                value={form.expectedEMI}
-                onChange={(v) => update("expectedEMI", stripNegative(v))}
-                icon={<Banknote className="w-5 h-5" />}
-              />
-              <FloatingInput
                 label="Principal Amount Required"
                 value={form.expectedPrincipal}
                 onChange={(v) => update("expectedPrincipal", stripNegative(v))}
                 prefix="₹"
               />
             </div>
+
+            <div>
+              <label className="text-sm text-muted-foreground mb-3 block">Do you have an existing loan?</label>
+              <SegmentedToggle
+                options={yesNo}
+                value={form.hasExistingLoan}
+                onChange={(v) => update("hasExistingLoan", v)}
+              />
+            </div>
+
+            <AnimatePresence>
+              {form.hasExistingLoan === "yes" && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-6 overflow-hidden"
+                >
+                  {form.existingLoansFresh.map((loan, index) => (
+                    <ExistingLoanCard
+                      key={loan.id}
+                      loan={loan}
+                      index={index}
+                      canDelete={form.existingLoansFresh.length > 1}
+                      onRemove={() => removeFreshExistingLoan(loan.id)}
+                      onChange={(field, value) => updateFreshExistingLoan(loan.id, field, value)}
+                    />
+                  ))}
+
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={addFreshExistingLoan}
+                    className="w-full p-4 rounded-xl border-2 border-dashed border-white/20 hover:border-[#1B4FBB] text-muted-foreground hover:text-white transition-all flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Add More Loan
+                  </motion.button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
@@ -293,21 +626,29 @@ export function CompanyDetailsStep({ form, update }: StepProps) {
           icon={<Building2 className="w-5 h-5" />}
         />
         <FloatingInput
+          label="Company Name"
+          value={form.companyName}
+          onChange={(v) => update("companyName", v)}
+          icon={<Building2 className="w-5 h-5" />}
+        />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <FloatingInput
           label="Age of Company (Years)"
           type="number"
           value={form.companyAge}
           onChange={(v) => update("companyAge", stripNegative(v))}
           icon={<Calendar className="w-5 h-5" />}
         />
+        <FloatingSelect
+          label="Salary Credit Type"
+          options={salaryCreditOptions}
+          value={form.salaryCreditType}
+          onChange={(v) => update("salaryCreditType", v)}
+          icon={<Wallet className="w-5 h-5" />}
+        />
       </div>
-
-      <FloatingSelect
-        label="Salary Credit Type"
-        options={salaryCreditOptions}
-        value={form.salaryCreditType}
-        onChange={(v) => update("salaryCreditType", v)}
-        icon={<Wallet className="w-5 h-5" />}
-      />
     </div>
   )
 }
@@ -334,10 +675,10 @@ export function CreditHistoryStep({ form, update }: StepProps) {
           placeholder="300-900"
         />
         <FloatingInput
-          label="Enquiries in Last 3 Months"
+          label="Enquiries in Last 30 Days"
           type="number"
-          value={form.enquiries}
-          onChange={(v) => update("enquiries", stripNegative(v))}
+          value={form.enquiries30Days}
+          onChange={(v) => update("enquiries30Days", stripNegative(v))}
         />
       </div>
 
@@ -441,6 +782,22 @@ export function SalaryBankingStep({ form, update }: StepProps) {
             options={yesNo}
             value={form.homeLoanHistory}
             onChange={(v) => update("homeLoanHistory", v)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">26AS Available</label>
+          <SegmentedToggle
+            options={yesNo}
+            value={form.form26ASAvailable}
+            onChange={(v) => update("form26ASAvailable", v)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-2 block">Form 16 Available</label>
+          <SegmentedToggle
+            options={yesNo}
+            value={form.form16Available}
+            onChange={(v) => update("form16Available", v)}
           />
         </div>
       </div>

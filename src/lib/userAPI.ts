@@ -11,6 +11,9 @@ export type ExistingLoanType =
   | "credit_card"
   | "app_loan"
   | "personal_loan"
+  | "home_loan"
+  | "car_loan"
+  | "secured_loan"
 
 export type CompanyType =
   | "proprietorship"
@@ -50,6 +53,7 @@ export interface EmploymentDetails {
 export interface CreditHistory {
   cibil_score: number // 300-900
   enquiries_last_3_months?: number
+  enquiries_last_30_days?: number
   bounce_latest_month?: boolean
   any_overdue_pending?: boolean
   past_delayed_payments?: boolean

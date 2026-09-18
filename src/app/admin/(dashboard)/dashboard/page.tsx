@@ -125,11 +125,6 @@ function useDashboardStats() {
   return { stats, isLoading, error }
 }
 
-/**
- * Live like/dislike feedback across all users' applications. Backs both the
- * "Recommendation Accuracy" card (like = correct, dislike = incorrect proxy)
- * and the "User Activity Log" table below.
- */
 function useApplicationFeedback() {
   const [items, setItems] = useState<ApplicationFeedbackListItem[]>([])
   const [likeCount, setLikeCount] = useState(0)

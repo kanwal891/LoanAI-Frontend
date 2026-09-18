@@ -74,10 +74,8 @@ export default function ProfilePage() {
           </div>
 
           <GlassCard className="w-full p-6">
-            {/* Loading */}
             {isLoading && <SectionLoader icon={User} label="Loading your profile…" />}
 
-            {/* Error */}
             {!isLoading && loadError && (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <FileWarning className="mb-3 h-8 w-8 text-[#FF6B35]" />
@@ -86,10 +84,8 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* Loaded */}
             {!isLoading && !loadError && user && (
               <>
-                {/* Avatar + Name */}
                 <div className="mb-6 flex items-center gap-4">
                   <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-indigo-500 text-xl font-semibold text-white">
                     {initials}
@@ -102,7 +98,6 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Details — read-only, straight from the API */}
                 <div className="grid grid-cols-1 gap-3 border-t border-white/10 pt-6">
                   {fields.map((field) => (
                     <div key={field.label} className="flex items-center gap-3 rounded-lg bg-white/5 p-4">
