@@ -363,13 +363,15 @@ export default function ExtractionReviewPage() {
             <>
               <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
                 <Label className="text-base font-semibold text-white">Extracted Policy Data</Label>
-                {!isReviewed && (
-                  <span className="text-xs text-muted-foreground">Editable — fix anything the AI got wrong</span>
-                )}
+                <span className="text-xs text-muted-foreground">
+                  {isReviewed
+                    ? "Approved — you can still edit and save changes"
+                    : "Editable — fix anything the AI got wrong"}
+                </span>
               </div>
               <PolicyDataEditor
                 data={result.policy_card?.extracted_json ?? {}}
-                readOnly={isReviewed}
+                readOnly={false}
                 onSave={handleSavePolicyData}
                 onDirtyChange={setHasUnsavedEdits}
               />

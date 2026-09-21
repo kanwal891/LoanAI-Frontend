@@ -56,9 +56,6 @@ function generateUniqueId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
-// Shared editable card for one existing loan entry — used both for
-// Balance Transfer loans and for the "existing loan" details captured on
-// a Fresh Case.
 function ExistingLoanCard({
   loan,
   index,
@@ -189,8 +186,6 @@ function ProfessionDropdown({ form, update }: StepProps) {
     }
   }, [open])
 
-  // When reopened, start with the grade list expanded if Govt Employee
-  // is already the current selection, so the user isn't hunting for it.
   useEffect(() => {
     if (open) setGovtExpanded(form.professionType === "govt-employee")
   }, [open, form.professionType])
@@ -207,7 +202,6 @@ function ProfessionDropdown({ form, update }: StepProps) {
   const selectProfession = (value: string) => {
     update("professionType", value)
     if (value === "govt-employee") {
-      // Don't close the menu yet — let them pick a grade in place.
       setGovtExpanded(true)
       return
     }
@@ -316,36 +310,35 @@ function ProfessionDropdown({ form, update }: StepProps) {
   )
 }
 
-// Radio-button group, styled to match the rest of the form. Options
-// stretch to fill the row (flex-1) instead of hugging their label text,
-// so the buttons read as wider, easier targets — falls back to wrapping
-// on narrow screens via min-width.
 function RadioGroup({
   options,
   value,
   onChange,
+  size = "md",
 }: {
   options: { value: string; label: string }[]
   value: string
   onChange: (v: string) => void
+  size?: "sm" | "md"
 }) {
+  const isSm = size === "sm"
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className={`flex flex-wrap ${isSm ? "gap-2" : "gap-3"}`}>
       {options.map((opt) => {
         const selected = value === opt.value
         return (
           <label
             key={opt.value}
-            className={`flex flex-1 min-w-[140px] items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl border cursor-pointer transition-colors ${
-              selected ? "border-[#1B4FBB]/60 bg-[#1B4FBB]/10" : "border-white/10 hover:border-white/20"
-            }`}
+            className={`flex items-center justify-center cursor-pointer rounded-lg border transition-colors ${
+              isSm ? "gap-1.5 px-3 py-1.5" : "flex-1 min-w-[140px] gap-2.5 px-6 py-3.5 rounded-xl"
+            } ${selected ? "border-[#1B4FBB]/60 bg-[#1B4FBB]/10" : "border-white/10 hover:border-white/20"}`}
           >
             <span
-              className={`flex items-center justify-center w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors ${
-                selected ? "border-[#6366F1]" : "border-white/30"
-              }`}
+              className={`flex items-center justify-center rounded-full border-2 flex-shrink-0 transition-colors ${
+                isSm ? "w-3 h-3" : "w-4 h-4"
+              } ${selected ? "border-[#6366F1]" : "border-white/30"}`}
             >
-              {selected && <span className="w-2 h-2 rounded-full bg-[#6366F1]" />}
+              {selected && <span className={`rounded-full bg-[#6366F1] ${isSm ? "w-1.5 h-1.5" : "w-2 h-2"}`} />}
             </span>
             <input
               type="radio"
@@ -353,7 +346,9 @@ function RadioGroup({
               checked={selected}
               onChange={() => onChange(opt.value)}
             />
-            <span className={`text-sm ${selected ? "text-white" : "text-muted-foreground"}`}>{opt.label}</span>
+            <span className={`${isSm ? "text-xs" : "text-sm"} ${selected ? "text-white" : "text-muted-foreground"}`}>
+              {opt.label}
+            </span>
           </label>
         )
       })}
@@ -392,7 +387,7 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
         />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 gap-6 md:items-center">
         <FloatingInput
           label="Pincode"
           value={form.pincode}
@@ -400,9 +395,9 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
           icon={<MapPin className="w-5 h-5" />}
         />
 
-        <div>
-          <label className="text-xs text-[#6366F1] mb-1.5 block px-1">Location</label>
-          <RadioGroup options={locationOptions} value={form.location} onChange={(v) => update("location", v)} />
+        <div className="flex items-center gap-6">
+          <label className="text-s text-[#ededf3] px-1 flex-shrink-0">Location</label>
+          <RadioGroup size="sm" options={locationOptions} value={form.location} onChange={(v) => update("location", v)} />
         </div>
       </div>
 
