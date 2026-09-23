@@ -56,6 +56,9 @@ function generateUniqueId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
+// Shared editable card for one existing loan entry — used both for
+// Balance Transfer loans and for the "existing loan" details captured on
+// a Fresh Case.
 function ExistingLoanCard({
   loan,
   index,
@@ -186,6 +189,8 @@ function ProfessionDropdown({ form, update }: StepProps) {
     }
   }, [open])
 
+  // When reopened, start with the grade list expanded if Govt Employee
+  // is already the current selection, so the user isn't hunting for it.
   useEffect(() => {
     if (open) setGovtExpanded(form.professionType === "govt-employee")
   }, [open, form.professionType])
@@ -202,6 +207,7 @@ function ProfessionDropdown({ form, update }: StepProps) {
   const selectProfession = (value: string) => {
     update("professionType", value)
     if (value === "govt-employee") {
+      // Don't close the menu yet — let them pick a grade in place.
       setGovtExpanded(true)
       return
     }
@@ -310,12 +316,21 @@ function ProfessionDropdown({ form, update }: StepProps) {
   )
 }
 
+// Radio-button group, styled to match the rest of the form. Options
+// stretch to fill the row (flex-1) instead of hugging their label text
+// by default; pass size="sm" for a compact inline variant (smaller
+// padding/text, content-width buttons instead of flex-1). `name` is
+// required so the underlying <input type="radio"> elements share a
+// common group name — without it they're just individually-checkable
+// inputs, not a real radio group, for both AT and browser semantics.
 function RadioGroup({
+  name,
   options,
   value,
   onChange,
   size = "md",
 }: {
+  name: string
   options: { value: string; label: string }[]
   value: string
   onChange: (v: string) => void
@@ -323,7 +338,7 @@ function RadioGroup({
 }) {
   const isSm = size === "sm"
   return (
-    <div className={`flex flex-wrap ${isSm ? "gap-2" : "gap-3"}`}>
+    <div role="radiogroup" className={`flex flex-wrap ${isSm ? "gap-2" : "gap-3"}`}>
       {options.map((opt) => {
         const selected = value === opt.value
         return (
@@ -342,6 +357,8 @@ function RadioGroup({
             </span>
             <input
               type="radio"
+              name={name}
+              value={opt.value}
               className="sr-only"
               checked={selected}
               onChange={() => onChange(opt.value)}
@@ -395,9 +412,15 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
           icon={<MapPin className="w-5 h-5" />}
         />
 
-        <div className="flex items-center gap-6">
-          <label className="text-s text-[#ededf3] px-1 flex-shrink-0">Location</label>
-          <RadioGroup size="sm" options={locationOptions} value={form.location} onChange={(v) => update("location", v)} />
+        <div className="flex items-center gap-3">
+          <label className="text-xs text-[#6366F1] px-1 flex-shrink-0">Location</label>
+          <RadioGroup
+            name="location"
+            size="sm"
+            options={locationOptions}
+            value={form.location}
+            onChange={(v) => update("location", v)}
+          />
         </div>
       </div>
 
