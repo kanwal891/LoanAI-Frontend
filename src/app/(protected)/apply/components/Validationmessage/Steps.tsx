@@ -151,17 +151,6 @@ function ExistingLoanCard({
   )
 }
 
-// Type of Profession select where "Government Employee" expands an
-// inline accordion of grade options (Grade 1-4) directly beneath that
-// row, rather than a hover-triggered side flyout. This keeps the whole
-// interaction inside one dropdown, works identically on touch and
-// pointer devices, and avoids the flyout's left/right flip math.
-//
-// Still rendered via a portal into document.body: the page wraps this
-// form in a container with `overflow-hidden` (for the step-transition
-// animation), which would otherwise clip the dropdown. Position is
-// computed from the trigger's bounding rect and kept in sync on
-// scroll/resize while open.
 function ProfessionDropdown({ form, update }: StepProps) {
   const [open, setOpen] = useState(false)
   const [govtExpanded, setGovtExpanded] = useState(false)
@@ -309,7 +298,6 @@ function ProfessionDropdown({ form, update }: StepProps) {
 
   return (
     <div className="relative">
-      <label className="text-xs text-[#6366F1] mb-1.5 block px-1">Type of Profession</label>
       <button
         ref={triggerRef}
         type="button"
@@ -329,43 +317,55 @@ function ProfessionDropdown({ form, update }: StepProps) {
 }
 
 // Radio-button group, styled to match the rest of the form. Options
-// stretch to fill the row (flex-1) instead of hugging their label text,
-// so the buttons read as wider, easier targets — falls back to wrapping
-// on narrow screens via min-width.
+// stretch to fill the row (flex-1) instead of hugging their label text
+// by default; pass size="sm" for a compact inline variant (smaller
+// padding/text, content-width buttons instead of flex-1). `name` is
+// required so the underlying <input type="radio"> elements share a
+// common group name — without it they're just individually-checkable
+// inputs, not a real radio group, for both AT and browser semantics.
 function RadioGroup({
+  name,
   options,
   value,
   onChange,
+  size = "md",
 }: {
+  name: string
   options: { value: string; label: string }[]
   value: string
   onChange: (v: string) => void
+  size?: "sm" | "md"
 }) {
+  const isSm = size === "sm"
   return (
-    <div className="flex flex-wrap gap-3">
+    <div role="radiogroup" className={`flex flex-wrap ${isSm ? "gap-2" : "gap-3"}`}>
       {options.map((opt) => {
         const selected = value === opt.value
         return (
           <label
             key={opt.value}
-            className={`flex flex-1 min-w-[140px] items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl border cursor-pointer transition-colors ${
-              selected ? "border-[#1B4FBB]/60 bg-[#1B4FBB]/10" : "border-white/10 hover:border-white/20"
-            }`}
+            className={`flex items-center justify-center cursor-pointer rounded-lg border transition-colors ${
+              isSm ? "gap-1.5 px-3 py-1.5" : "flex-1 min-w-[140px] gap-2.5 px-6 py-3.5 rounded-xl"
+            } ${selected ? "border-[#1B4FBB]/60 bg-[#1B4FBB]/10" : "border-white/10 hover:border-white/20"}`}
           >
             <span
-              className={`flex items-center justify-center w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors ${
-                selected ? "border-[#6366F1]" : "border-white/30"
-              }`}
+              className={`flex items-center justify-center rounded-full border-2 flex-shrink-0 transition-colors ${
+                isSm ? "w-3 h-3" : "w-4 h-4"
+              } ${selected ? "border-[#6366F1]" : "border-white/30"}`}
             >
-              {selected && <span className="w-2 h-2 rounded-full bg-[#6366F1]" />}
+              {selected && <span className={`rounded-full bg-[#6366F1] ${isSm ? "w-1.5 h-1.5" : "w-2 h-2"}`} />}
             </span>
             <input
               type="radio"
+              name={name}
+              value={opt.value}
               className="sr-only"
               checked={selected}
               onChange={() => onChange(opt.value)}
             />
-            <span className={`text-sm ${selected ? "text-white" : "text-muted-foreground"}`}>{opt.label}</span>
+            <span className={`${isSm ? "text-xs" : "text-sm"} ${selected ? "text-white" : "text-muted-foreground"}`}>
+              {opt.label}
+            </span>
           </label>
         )
       })}
@@ -404,7 +404,7 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
         />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 gap-6 md:items-center">
         <FloatingInput
           label="Pincode"
           value={form.pincode}
@@ -412,9 +412,15 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
           icon={<MapPin className="w-5 h-5" />}
         />
 
-        <div>
-          <label className="text-xs text-[#6366F1] mb-1.5 block px-1">Location</label>
-          <RadioGroup options={locationOptions} value={form.location} onChange={(v) => update("location", v)} />
+        <div className="flex items-center gap-3">
+          <label className="text-xs text-[#6366F1] px-1 flex-shrink-0">Location</label>
+          <RadioGroup
+            name="location"
+            size="sm"
+            options={locationOptions}
+            value={form.location}
+            onChange={(v) => update("location", v)}
+          />
         </div>
       </div>
 
