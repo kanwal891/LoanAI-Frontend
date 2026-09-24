@@ -60,7 +60,7 @@ export interface ApplyFormState {
   caseType: string
   professionType: string
   govtGrade: string
-  govtGradeDescription: string
+  professionDescription: string
   location: string
 
   // Step 2A: Balance Transfer
@@ -107,7 +107,7 @@ export const initialApplyFormState: ApplyFormState = {
   caseType: "fresh",
   professionType: "",
   govtGrade: "",
-  govtGradeDescription: "",
+  professionDescription: "",
   location: "",
 
   existingLoans: [emptyExistingLoan("1")],
@@ -338,7 +338,7 @@ export function buildPayload(form: ApplyFormState): LoanApplicationRequest {
       pincode: form.pincode,
       profession_type: PROFESSION_TYPE_MAP[form.professionType] ?? null,
       government_employee_grade: isGovtEmployee ? GOVT_GRADE_MAP[form.govtGrade] ?? null : null,
-      government_employee_grade_description: isGovtEmployee ? form.govtGradeDescription : "",
+      profession_description: form.professionDescription,
       location_type: LOCATION_TYPE_MAP[form.location] ?? null,
     },
     loan_requirements: isBT
@@ -434,6 +434,7 @@ export function validateStep3(form: ApplyFormState): string | null {
 export function validateStep4(form: ApplyFormState): string | null {
   const cibil = toNumber(form.cibilScore)
   if (cibil == null || cibil < 300 || cibil > 900) return "CIBIL score must be between 300 and 900."
+  if (toNumber(form.enquiries) == null) return "Please enter the number of enquiries in the last 3 months."
   if (toNumber(form.enquiries30Days) == null) return "Please enter the number of enquiries in the last 30 days."
   if (form.settlementWriteOff === "yes" && !form.settlementDate.trim()) {
     return "Please enter the date of settlement / write-off."

@@ -106,7 +106,7 @@ function payloadToFormState(payload: LoanApplicationRequest): ApplyFormState {
     caseType: isBT ? "bt" : "fresh",
     professionType: PROFESSION_TYPE_MAP_REVERSE[personal?.profession_type || ""] || "",
     govtGrade: GOVT_GRADE_MAP_REVERSE[personal?.government_employee_grade || ""] || "",
-    govtGradeDescription: personal?.government_employee_grade_description || "",
+    professionDescription: personal?.profession_description || "",
     location: LOCATION_TYPE_MAP_REVERSE[personal?.location_type || ""] || "",
 
     existingLoans: existingLoans.length > 0 ? existingLoans : [emptyExistingLoan("1")],
@@ -123,7 +123,7 @@ function payloadToFormState(payload: LoanApplicationRequest): ApplyFormState {
 
     cibilScore: numToStr(payload.credit_history?.cibil_score),
     enquiries: numToStr(payload.credit_history?.enquiries_last_3_months),
-    enquiries30Days: numToStr(payload.credit_history?.enquiries_last_30_days),
+    enquiries30Days: numToStr((payload.credit_history as any)?.enquiries_last_30_days),
     bounceLatest: boolToYesNo(payload.credit_history?.bounce_latest_month),
     overduePending: boolToYesNo(payload.credit_history?.any_overdue_pending),
     pastDelayed: boolToYesNo(payload.credit_history?.past_delayed_payments),
