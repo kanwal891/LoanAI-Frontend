@@ -208,11 +208,14 @@ function ProfessionDropdown({ form, update }: StepProps) {
     update("professionType", value)
     if (value === "govt-employee") {
       // Don't close the menu yet — let them pick a grade in place.
+      update("professionDescription", "")
       setGovtExpanded(true)
       return
     }
     update("govtGrade", "")
-    update("govtGradeDescription", "")
+    if (value !== "other") {
+      update("professionDescription", "")
+    }
     setOpen(false)
     setGovtExpanded(false)
   }
@@ -220,6 +223,7 @@ function ProfessionDropdown({ form, update }: StepProps) {
   const selectGrade = (grade: string) => {
     update("professionType", "govt-employee")
     update("govtGrade", grade)
+    update("professionDescription", "")
     setOpen(false)
     setGovtExpanded(false)
   }
@@ -378,7 +382,8 @@ function RadioGroup({
 // =========================================================================
 
 export function PersonalDetailsStep({ form, update }: StepProps) {
-  const isGovtEmployee = form.professionType === "govt-employee"
+  const isOtherProfession = form.professionType === "other"
+  const showProfessionDescription = isOtherProfession
 
   return (
     <div className="space-y-6">
@@ -427,7 +432,7 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
       <ProfessionDropdown form={form} update={update} />
 
       <AnimatePresence>
-        {isGovtEmployee && (
+        {showProfessionDescription && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -436,9 +441,9 @@ export function PersonalDetailsStep({ form, update }: StepProps) {
           >
             <FloatingInput
               label="Description (optional)"
-              value={form.govtGradeDescription}
-              onChange={(v) => update("govtGradeDescription", v)}
-              placeholder="Any additional details, if required"
+              value={form.professionDescription}
+              onChange={(v) => update("professionDescription", v)}
+              placeholder="Please describe your profession"
             />
           </motion.div>
         )}
@@ -680,6 +685,15 @@ export function CreditHistoryStep({ form, update }: StepProps) {
           max={900}
           placeholder="300-900"
         />
+        <FloatingInput
+          label="Enquiries in Last 3 Months"
+          type="number"
+          value={form.enquiries}
+          onChange={(v) => update("enquiries", stripNegative(v))}
+        />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
         <FloatingInput
           label="Enquiries in Last 30 Days"
           type="number"
